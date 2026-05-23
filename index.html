@@ -89,10 +89,26 @@
         // Array to hold blocks in current level
         this.blocks = [];
 
+        // Game state
+        this.gameState = 'waiting';
+        this.jumpDuration = 400;
+        this.lives = 3;
+
+        // Direction mapping for arrow keys
+        this.directionMap = {
+          'ArrowUp': { x: 0, z: -1 },
+          'ArrowDown': { x: 0, z: 1 },
+          'ArrowLeft': { x: -1, z: 0 },
+          'ArrowRight': { x: 1, z: 0 }
+        };
+
         // Create player character
         this.player = this.createCharacter(this.currentCharacter);
         this.player.position.set(0, 0.5, 0);
         this.scene.add(this.player);
+
+        // Initialize input handling
+        this.initInput();
 
         // Simple animate loop
         this.animate();
@@ -266,6 +282,81 @@
         );
 
         return group;
+      }
+
+      initInput() {
+        window.addEventListener('keydown', (e) => this.onKeyDown(e));
+      }
+
+      onKeyDown(e) {
+        if (this.gameState !== 'waiting') return;
+        const direction = this.directionMap[e.key];
+        if (direction) {
+          e.preventDefault();
+          this.startJump(direction);
+        }
+      }
+
+      startJump(direction) {
+        this.gameState = 'jumping';
+        const startPos = this.player.position.clone();
+        const targetX = startPos.x + direction.x * this.blockConfig.width;
+        const targetZ = startPos.z + direction.z * this.blockConfig.depth;
+
+        const startTime = performance.now();
+        const jumpHeight = 0.8;
+
+        const animateJump = (currentTime) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / this.jumpDuration, 1);
+          const arc = Math.sin(progress * Math.PI);
+          const currentX = startPos.x + (targetX - startPos.x) * progress;
+          const currentZ = startPos.z + (targetZ - startPos.z) * progress;
+          const currentY = startPos.y + arc * jumpHeight;
+          this.player.position.set(currentX, currentY, currentZ);
+
+          if (progress < 1) {
+            requestAnimationFrame(animateJump);
+          } else {
+            this.onJumpComplete(targetX, targetZ);
+          }
+        };
+
+        requestAnimationFrame(animateJump);
+      }
+
+      onJumpComplete(x, z) {
+        const block = this.checkBlockAt(x, z);
+        if (block) {
+          this.gameState = 'waiting';
+        } else {
+          this.onDeath();
+        }
+      }
+
+      checkBlockAt(x, z) {
+        const threshold = 0.6;
+        for (const block of this.blocks) {
+          const dx = Math.abs(block.position.x - x);
+          const dz = Math.abs(block.position.z - z);
+          if (dx < threshold && dz < threshold) {
+            return block;
+          }
+        }
+        return null;
+      }
+
+      onDeath() {
+        this.lives = this.lives - 1;
+        this.gameState = 'dead';
+        if (this.lives > 0) {
+          this.resetPlayerPosition();
+        }
+      }
+
+      resetPlayerPosition() {
+        this.player.position.set(0, 0.5, 0);
+        this.gameState = 'waiting';
       }
 
       animate() {

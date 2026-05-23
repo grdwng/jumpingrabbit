@@ -69,6 +69,34 @@ class Game {
     this.gameState = 'waiting';
     this.jumpDuration = 400;
     this.lives = 3;
+    this.score = 0;
+    this.energyCount = 0;
+    this.hasShield = false;
+    this.currentLevel = 1;
+
+    // Level system - 20 levels with progressive difficulty
+    this.levels = [
+      { id: 1, name: "起步", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'end', reward: null}] },
+      { id: 2, name: "转向", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 1, type: 'normal', reward: 'heart'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 3, z: 2, type: 'end', reward: null}] },
+      { id: 3, name: "曲折", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 3, z: 1, type: 'normal', reward: 'heart'}, {x: 3, z: 2, type: 'normal', reward: 'coin'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'end', reward: null}] },
+      { id: 4, name: "三角", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'heart'}, {x: 2, z: 1, type: 'normal', reward: 'coin'}, {x: 2, z: 2, type: 'normal', reward: 'energy'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'end', reward: null}] },
+      { id: 5, name: "方块", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'energy'}, {x: 2, z: 1, type: 'normal', reward: 'heart'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 1, type: 'end', reward: null}] },
+      { id: 6, name: "长路", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 5, z: 0, type: 'normal', reward: 'heart'}, {x: 6, z: 0, type: 'normal', reward: 'coin'}, {x: 7, z: 0, type: 'end', reward: null}] },
+      { id: 7, name: "折返", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 4, z: -1, type: 'normal', reward: 'heart'}, {x: 4, z: -2, type: 'normal', reward: 'coin'}, {x: 3, z: -2, type: 'normal', reward: 'coin'}, {x: 2, z: -2, type: 'end', reward: null}] },
+      { id: 8, name: "螺旋", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 1, type: 'normal', reward: 'energy'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'heart'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: -1, z: 2, type: 'normal', reward: 'coin'}, {x: -1, z: 1, type: 'end', reward: null}] },
+      { id: 9, name: "迷宫", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'energy'}, {x: 2, z: 1, type: 'normal', reward: 'heart'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: -1, z: 2, type: 'normal', reward: 'coin'}, {x: -1, z: 1, type: 'normal', reward: 'coin'}, {x: -1, z: 0, type: 'end', reward: null}] },
+      { id: 10, name: "双线", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 4, z: 1, type: 'normal', reward: 'heart'}, {x: 4, z: 2, type: 'normal', reward: 'coin'}, {x: 5, z: 2, type: 'end', reward: null}] },
+      { id: 11, name: "回形", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 5, z: 0, type: 'normal', reward: 'heart'}, {x: 5, z: 1, type: 'normal', reward: 'coin'}, {x: 5, z: 2, type: 'normal', reward: 'coin'}, {x: 5, z: 3, type: 'normal', reward: 'coin'}, {x: 4, z: 3, type: 'normal', reward: 'coin'}, {x: 3, z: 3, type: 'end', reward: null}] },
+      { id: 12, name: "跳跃", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 4, z: 0, type: 'normal', reward: 'energy'}, {x: 6, z: 0, type: 'normal', reward: 'heart'}, {x: 8, z: 0, type: 'end', reward: null}] },
+      { id: 13, name: "S形", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 4, z: 1, type: 'normal', reward: 'heart'}, {x: 4, z: 2, type: 'normal', reward: 'coin'}, {x: 3, z: 2, type: 'normal', reward: 'coin'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'end', reward: null}] },
+      { id: 14, name: "楼梯", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 0, z: 1, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'energy'}, {x: 1, z: 3, type: 'normal', reward: 'heart'}, {x: 2, z: 3, type: 'normal', reward: 'coin'}, {x: 2, z: 4, type: 'normal', reward: 'coin'}, {x: 3, z: 4, type: 'end', reward: null}] },
+      { id: 15, name: "菱形", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'energy'}, {x: 3, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 1, type: 'normal', reward: 'heart'}, {x: 1, z: 1, type: 'normal', reward: 'coin'}, {x: 0, z: 1, type: 'end', reward: null}] },
+      { id: 16, name: "Z形", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 3, z: 1, type: 'normal', reward: 'heart'}, {x: 2, z: 1, type: 'normal', reward: 'coin'}, {x: 1, z: 1, type: 'normal', reward: 'coin'}, {x: 0, z: 1, type: 'end', reward: null}] },
+      { id: 17, name: "叉形", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'energy'}, {x: 2, z: 1, type: 'normal', reward: 'heart'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 1, type: 'end', reward: null}] },
+      { id: 18, name: "圈套", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 3, z: 1, type: 'normal', reward: 'heart'}, {x: 3, z: 2, type: 'normal', reward: 'coin'}, {x: 2, z: 2, type: 'normal', reward: 'coin'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 1, type: 'end', reward: null}] },
+      { id: 19, name: "长蛇", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 5, z: 0, type: 'normal', reward: 'heart'}, {x: 6, z: 0, type: 'normal', reward: 'coin'}, {x: 7, z: 0, type: 'normal', reward: 'coin'}, {x: 8, z: 0, type: 'end', reward: null}] },
+      { id: 20, name: "终极", blocks: [{x: 0, z: 0, type: 'start', reward: null}, {x: 1, z: 0, type: 'normal', reward: 'coin'}, {x: 2, z: 0, type: 'normal', reward: 'coin'}, {x: 3, z: 0, type: 'normal', reward: 'energy'}, {x: 4, z: 0, type: 'normal', reward: 'coin'}, {x: 4, z: 1, type: 'normal', reward: 'heart'}, {x: 4, z: 2, type: 'normal', reward: 'coin'}, {x: 3, z: 2, type: 'normal', reward: 'coin'}, {x: 2, z: 2, type: 'normal', reward: 'energy'}, {x: 1, z: 2, type: 'normal', reward: 'coin'}, {x: 0, z: 2, type: 'normal', reward: 'coin'}, {x: -1, z: 2, type: 'normal', reward: 'heart'}, {x: -1, z: 1, type: 'end', reward: null}] }
+    ];
 
     this.directionMap = {
       'ArrowUp': { x: 0, z: -1 },
@@ -307,6 +335,46 @@ class Game {
   resetPlayerPosition() {
     this.player.position.set(0, 0.5, 0);
     this.gameState = 'waiting';
+  }
+
+  loadLevel(levelId) {
+    const level = this.levels.find(l => l.id === levelId);
+    if (!level) return;
+
+    this.currentLevel = levelId;
+
+    // Clear old blocks
+    this.blocks.forEach(block => this.scene.remove(block));
+    this.blocks = [];
+
+    // Load new level blocks
+    level.blocks.forEach(data => {
+      const block = this.createBlock(data.x, data.z, data.type, data.reward);
+      this.scene.add(block);
+      this.blocks.push(block);
+    });
+
+    // Reset player position to start
+    const startBlock = level.blocks.find(b => b.type === 'start');
+    if (startBlock) {
+      this.player.position.set(
+        startBlock.x * this.blockConfig.width,
+        this.blockConfig.height / 2 + 0.5,
+        startBlock.z * this.blockConfig.depth
+      );
+    }
+
+    this.lives = 3;
+    this.score = 0;
+    this.energyCount = 0;
+    this.hasShield = false;
+    this.gameState = 'waiting';
+  }
+
+  nextLevel() {
+    if (this.currentLevel < this.levels.length) {
+      this.loadLevel(this.currentLevel + 1);
+    }
   }
 }
 
