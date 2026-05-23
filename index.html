@@ -59,6 +59,36 @@
         };
         this.currentCharacter = 'rabbit';
 
+        // Block configuration
+        this.blockConfig = {
+          width: 1.2,
+          height: 0.5,
+          depth: 1.2
+        };
+
+        // Block materials
+        this.blockMaterials = {
+          normal: new THREE.MeshLambertMaterial({ color: 0xFFE5A0 }),
+          start: new THREE.MeshLambertMaterial({ color: 0x98D9A4 }),
+          end: new THREE.MeshLambertMaterial({ color: 0xFFD700 })
+        };
+
+        // Reward geometries and materials
+        this.rewardGeometries = {
+          coin: new THREE.CylinderGeometry(0.15, 0.15, 0.05, 16),
+          energy: new THREE.OctahedronGeometry(0.15),
+          heart: new THREE.SphereGeometry(0.12, 16, 16)
+        };
+
+        this.rewardMaterials = {
+          coin: new THREE.MeshLambertMaterial({ color: 0xFFD700 }),
+          energy: new THREE.MeshLambertMaterial({ color: 0xB39DDB }),
+          heart: new THREE.MeshLambertMaterial({ color: 0xFF6B8A })
+        };
+
+        // Array to hold blocks in current level
+        this.blocks = [];
+
         // Create player character
         this.player = this.createCharacter(this.currentCharacter);
         this.player.position.set(0, 0.5, 0);
@@ -172,6 +202,70 @@
         this.player = this.createCharacter(type);
         this.player.position.set(0, 0.5, 0);
         this.scene.add(this.player);
+      }
+
+      createBlock(x, z, type = 'normal', reward = null) {
+        const group = new THREE.Group();
+        group.userData = { type, reward, x, z };
+
+        // Create block geometry
+        const geometry = new THREE.BoxGeometry(
+          this.blockConfig.width,
+          this.blockConfig.height,
+          this.blockConfig.depth
+        );
+
+        // Create block mesh
+        const material = this.blockMaterials[type] || this.blockMaterials.normal;
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+
+        // Add border for start/end blocks
+        if (type === 'start' || type === 'end') {
+          const edgeGeometry = new THREE.EdgesGeometry(geometry);
+          const edgeColor = type === 'start' ? 0x00FF00 : 0xFF0000;
+          const edgeMaterial = new THREE.LineBasicMaterial({ color: edgeColor });
+          const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+          group.add(edges);
+
+          // Add flag for end block
+          if (type === 'end') {
+            const poleGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.6, 8);
+            const poleMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(0, 0.55, 0);
+            group.add(pole);
+
+            const flagGeo = new THREE.PlaneGeometry(0.3, 0.2);
+            const flagMat = new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide });
+            const flag = new THREE.Mesh(flagGeo, flagMat);
+            flag.position.set(0.15, 0.8, 0);
+            flag.rotation.y = Math.PI / 2;
+            group.add(flag);
+          }
+        }
+
+        // Add reward if specified
+        if (reward && this.rewardGeometries[reward]) {
+          const rewardMesh = new THREE.Mesh(
+            this.rewardGeometries[reward],
+            this.rewardMaterials[reward]
+          );
+          rewardMesh.position.set(0, 0.4, 0);
+          rewardMesh.userData = { rewardType: reward, collected: false };
+          group.add(rewardMesh);
+        }
+
+        // Set position based on grid coordinates
+        group.position.set(
+          x * this.blockConfig.width,
+          0,
+          z * this.blockConfig.depth
+        );
+
+        return group;
       }
 
       animate() {
