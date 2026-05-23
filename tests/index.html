@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>跳跳小方块 - 测试</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    .test { margin: 5px 0; padding: 5px; }
+    .pass { background: #ccffcc; }
+    .fail { background: #ffcccc; }
+    .pending { background: #ffffcc; }
+  </style>
+</head>
+<body>
+  <h1>🧪 跳跳小方块 - 测试套件</h1>
+  <div id="results"></div>
+
+  <script type="module">
+    // 简单测试框架
+    const TestRunner = {
+      results: [],
+
+      test(name, fn) {
+        try {
+          fn();
+          this.results.push({ name, status: 'pass' });
+        } catch (e) {
+          this.results.push({ name, status: 'fail', error: e.message });
+        }
+      },
+
+      assert(condition, message = 'Assertion failed') {
+        if (!condition) throw new Error(message);
+      },
+
+      assertEqual(actual, expected, message = '') {
+        if (actual !== expected) {
+          throw new Error(`${message} Expected ${expected}, got ${actual}`);
+        }
+      },
+
+      render() {
+        const container = document.getElementById('results');
+        let html = '';
+        let passCount = 0;
+        let failCount = 0;
+
+        this.results.forEach(r => {
+          const cls = r.status === 'pass' ? 'pass' : 'fail';
+          const icon = r.status === 'pass' ? '✓' : '✗';
+          html += `<div class="test ${cls}">${icon} ${r.name}`;
+          if (r.error) html += `<br><small>${r.error}</small>`;
+          html += '</div>';
+          if (r.status === 'pass') passCount++;
+          else failCount++;
+        });
+
+        html = `<h2>结果: ${passCount} 通过, ${failCount} 失败</h2>` + html;
+        container.innerHTML = html;
+
+        // 返回结果用于自动化检测
+        return { passCount, failCount };
+      }
+    };
+
+    // 导出到全局
+    window.TestRunner = TestRunner;
+  </script>
+
+  <!-- 游戏代码将在此处加载 -->
+  <script type="module" src="game.js"></script>
+
+  <!-- 测试用例 -->
+  <script type="module">
+    const T = TestRunner;
+    let game;
+
+    // 等待游戏初始化
+    async function waitForGame() {
+      let attempts = 0;
+      while (!window.game && attempts < 50) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+      if (window.game) {
+        game = window.game;
+        return true;
+      }
+      console.warn('Game not found after timeout');
+      return false;
+    }
+
+    async function runTests() {
+      const ready = await waitForGame();
+      if (!ready) {
+        document.getElementById('results').innerHTML = '<h2 style="color:red">游戏加载失败</h2>';
+        return;
+      }
+
+      // ========================================
+      // Task 1: 基础场景测试
+      // ========================================
+      T.test('场景应该存在', () => {
+        T.assert(game.scene !== undefined, 'Scene should exist');
+        T.assert(game.scene !== null, 'Scene should not be null');
+      });
+
+      T.test('相机应该正确配置', () => {
+        T.assert(game.camera !== undefined, 'Camera should exist');
+        T.assertEqual(game.camera.type, 'PerspectiveCamera', 'Should be PerspectiveCamera');
+      });
+
+      T.test('渲染器应该初始化', () => {
+        T.assert(game.renderer !== undefined, 'Renderer should exist');
+        T.assertEqual(game.renderer.type, 'WebGLRenderer', 'Should be WebGLRenderer');
+      });
+
+      // ========================================
+      // Task 2: 角色系统测试
+      // ========================================
+      T.test('角色配置应该存在', () => {
+        T.assert(game.characters !== undefined, 'Characters config should exist');
+        T.assertEqual(Object.keys(game.characters).length, 5, 'Should have 5 characters');
+      });
+
+      T.test('应该能创建小兔子角色', () => {
+        const rabbit = game.createCharacter('rabbit');
+        T.assert(rabbit !== undefined, 'Rabbit character should be created');
+        T.assert(rabbit.children.length > 0, 'Rabbit should have child meshes');
+      });
+
+      T.test('应该能创建所有5个角色', () => {
+        ['rabbit', 'cat', 'bear', 'boy', 'girl'].forEach(type => {
+          const char = game.createCharacter(type);
+          T.assert(char !== undefined, `${type} should be creatable`);
+        });
+      });
+
+      T.test('角色切换应该工作', () => {
+        game.switchCharacter('cat');
+        T.assertEqual(game.currentCharacter, 'cat', 'Current character should be cat');
+        game.switchCharacter('boy');
+        T.assertEqual(game.currentCharacter, 'boy', 'Current character should be boy');
+      });
+
+      // ========================================
+      // Task 3: 方块系统测试
+      // ========================================
+      T.test('方块配置应该存在', () => {
+        T.assert(game.blockConfig !== undefined, 'Block config should exist');
+        T.assertEqual(game.blockConfig.width, 1.2, 'Width should be 1.2');
+        T.assertEqual(game.blockConfig.height, 0.5, 'Height should be 0.5');
+        T.assertEqual(game.blockConfig.depth, 1.2, 'Depth should be 1.2');
+      });
+
+      T.test('应该能创建普通方块', () => {
+        const block = game.createBlock(0, 0, 'normal', 'coin');
+        T.assert(block !== undefined, 'Block should be created');
+        T.assertEqual(block.userData.type, 'normal', 'Block type should be normal');
+        T.assertEqual(block.userData.reward, 'coin', 'Block reward should be coin');
+      });
+
+      T.test('应该能创建起点方块', () => {
+        const block = game.createBlock(0, 0, 'start', null);
+        T.assertEqual(block.userData.type, 'start', 'Block type should be start');
+      });
+
+      T.test('应该能创建终点方块', () => {
+        const block = game.createBlock(0, 0, 'end', null);
+        T.assertEqual(block.userData.type, 'end', 'Block type should be end');
+      });
+
+      T.test('应该能创建带奖励的方块', () => {
+        const coinBlock = game.createBlock(0, 0, 'normal', 'coin');
+        const energyBlock = game.createBlock(1, 0, 'normal', 'energy');
+        const heartBlock = game.createBlock(2, 0, 'normal', 'heart');
+
+        T.assertEqual(coinBlock.userData.reward, 'coin', 'Should have coin reward');
+        T.assertEqual(energyBlock.userData.reward, 'energy', 'Should have energy reward');
+        T.assertEqual(heartBlock.userData.reward, 'heart', 'Should have heart reward');
+      });
+
+      // ========================================
+      // Task 4: 跳跃和碰撞测试
+      // ========================================
+      T.test('方向映射应该正确', () => {
+        T.assertEqual(game.directionMap['ArrowUp'].x, 0, 'ArrowUp x should be 0');
+        T.assertEqual(game.directionMap['ArrowUp'].z, -1, 'ArrowUp z should be -1');
+        T.assertEqual(game.directionMap['ArrowDown'].z, 1, 'ArrowDown z should be 1');
+        T.assertEqual(game.directionMap['ArrowLeft'].x, -1, 'ArrowLeft x should be -1');
+        T.assertEqual(game.directionMap['ArrowRight'].x, 1, 'ArrowRight x should be 1');
+      });
+
+      T.test('游戏初始状态应该是waiting', () => {
+        T.assertEqual(game.gameState, 'waiting', 'Initial state should be waiting');
+      });
+
+      T.test('跳跃持续时间应该正确', () => {
+        T.assertEqual(game.jumpDuration, 400, 'Jump duration should be 400ms');
+      });
+
+      // ========================================
+      // Task 5: 相机跟随测试
+      // ========================================
+      T.test('相机偏移量应该正确', () => {
+        T.assert(game.cameraOffset !== undefined, 'Camera offset should exist');
+        T.assertEqual(game.cameraOffset.y, 5, 'Camera Y offset should be 5');
+        T.assertEqual(game.cameraOffset.z, 8, 'Camera Z offset should be 8');
+      });
+
+      // ========================================
+      // Task 6: 奖励系统测试
+      // ========================================
+      T.test('初始分数应该是0', () => {
+        T.assertEqual(game.score, 0, 'Initial score should be 0');
+      });
+
+      T.test('初始生命应该是3', () => {
+        T.assertEqual(game.lives, 3, 'Initial lives should be 3');
+      });
+
+      T.test('初始能量应该是0', () => {
+        T.assertEqual(game.energyCount, 0, 'Initial energy should be 0');
+      });
+
+      T.test('初始不应该有护盾', () => {
+        T.assertEqual(game.hasShield, false, 'Initial should not have shield');
+      });
+
+      // ========================================
+      // Task 7: 游戏状态测试
+      // ========================================
+      T.test('游戏状态应该可以转换', () => {
+        game.gameState = 'paused';
+        T.assertEqual(game.gameState, 'paused', 'State should be paused');
+        game.gameState = 'playing';
+        T.assertEqual(game.gameState, 'playing', 'State should be playing');
+      });
+
+      // ========================================
+      // Task 8: 关卡系统测试
+      // ========================================
+      T.test('关卡数量应该是20', () => {
+        T.assertEqual(game.levels.length, 20, 'Should have 20 levels');
+      });
+
+      T.test('第一关应该有起点和终点', () => {
+        const level1 = game.levels[0];
+        const hasStart = level1.blocks.some(b => b.type === 'start');
+        const hasEnd = level1.blocks.some(b => b.type === 'end');
+        T.assert(hasStart, 'Level 1 should have start block');
+        T.assert(hasEnd, 'Level 1 should have end block');
+      });
+
+      T.test('应该能加载关卡', () => {
+        game.loadLevel(1);
+        T.assert(game.blocks.length > 0, 'Level 1 should load blocks');
+        T.assertEqual(game.currentLevel, 1, 'Current level should be 1');
+      });
+
+      // ========================================
+      // Task 10: 庆祝系统测试
+      // ========================================
+      T.test('彩蛋关卡应该定义正确', () => {
+        T.assert(game.easterEggLevels !== undefined, 'Easter egg levels should exist');
+        T.assert(game.easterEggLevels.includes(5), 'Level 5 should be easter egg');
+        T.assert(game.easterEggLevels.includes(10), 'Level 10 should be easter egg');
+        T.assert(game.easterEggLevels.includes(15), 'Level 15 should be easter egg');
+        T.assert(game.easterEggLevels.includes(20), 'Level 20 should be easter egg');
+      });
+
+      // ========================================
+      // Task 12: 主题系统测试
+      // ========================================
+      T.test('背景主题应该定义正确', () => {
+        T.assertEqual(Object.keys(game.backgroundThemes).length, 5, 'Should have 5 themes');
+        T.assert(game.backgroundThemes.sky !== undefined, 'Sky theme should exist');
+        T.assert(game.backgroundThemes.sunset !== undefined, 'Sunset theme should exist');
+        T.assert(game.backgroundThemes.night !== undefined, 'Night theme should exist');
+        T.assert(game.backgroundThemes.forest !== undefined, 'Forest theme should exist');
+        T.assert(game.backgroundThemes.candy !== undefined, 'Candy theme should exist');
+      });
+
+      // 渲染测试结果
+      const result = T.render();
+      window.testResult = result;
+
+      // 输出到控制台供自动化检测
+      console.log(`Tests completed: ${result.passCount} passed, ${result.failCount} failed`);
+    }
+
+    // 运行测试
+    runTests();
+  </script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+import * as THREE from 'three';
+
+class Game {
+  constructor() {
+    // Scene with sky blue background
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x7EC8E3);
+
+    // Camera - PerspectiveCamera, 60 FOV, position (0, 5, 8)
+    this.camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    this.camera.position.set(0, 5, 8);
+
+    // Renderer - WebGLRenderer with antialias
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(this.renderer.domElement);
+
+    // Window resize handling
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Character configuration - 5 playable characters
+    this.characters = {
+      rabbit: { name: '小兔子', color: 0xFFB6C1, bodyHeight: 0.6, earLength: 0.3 },
+      cat: { name: '小猫咪', color: 0xFFA500, bodyHeight: 0.5 },
+      bear: { name: '小熊', color: 0x8B4513, bodyHeight: 0.6 },
+      boy: { name: '小男孩', color: 0x4169E1, bodyHeight: 0.7 },
+      girl: { name: '小女孩', color: 0xFF69B4, bodyHeight: 0.65 }
+    };
+    this.currentCharacter = 'rabbit';
+
+    // Block configuration
+    this.blockConfig = {
+      width: 1.2,
+      height: 0.5,
+      depth: 1.2
+    };
+
+    this.blockMaterials = {
+      normal: new THREE.MeshLambertMaterial({ color: 0xFFE5A0 }),
+      start: new THREE.MeshLambertMaterial({ color: 0x98D9A4 }),
+      end: new THREE.MeshLambertMaterial({ color: 0xFFD700 })
+    };
+
+    this.rewardGeometries = {
+      coin: new THREE.CylinderGeometry(0.15, 0.15, 0.05, 16),
+      energy: new THREE.OctahedronGeometry(0.15),
+      heart: new THREE.SphereGeometry(0.12, 16, 16)
+    };
+
+    this.rewardMaterials = {
+      coin: new THREE.MeshLambertMaterial({ color: 0xFFD700 }),
+      energy: new THREE.MeshLambertMaterial({ color: 0xB39DDB }),
+      heart: new THREE.MeshLambertMaterial({ color: 0xFF6B8A })
+    };
+
+    this.blocks = [];
+
+    // Create player character
+    this.player = this.createCharacter(this.currentCharacter);
+    this.player.position.set(0, 0.5, 0);
+    this.scene.add(this.player);
+
+    // Simple animate loop
+    this.animate();
+  }
+
+  addEyes(group, y) {
+    const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.position.set(-0.08, y, 0.18);
+    group.add(leftEye);
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rightEye.position.set(0.08, y, 0.18);
+    group.add(rightEye);
+  }
+
+  createCharacter(type) {
+    const config = this.characters[type];
+    if (!config) return undefined;
+
+    const group = new THREE.Group();
+
+    // Body - CapsuleGeometry
+    const bodyGeo = new THREE.CapsuleGeometry(0.25, config.bodyHeight - 0.5, 4, 8);
+    const bodyMat = new THREE.MeshBasicMaterial({ color: config.color });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = config.bodyHeight / 2;
+    group.add(body);
+
+    // Head - SphereGeometry
+    const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
+    const headMat = new THREE.MeshBasicMaterial({ color: config.color });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = config.bodyHeight + 0.1;
+    group.add(head);
+
+    // Character-specific features
+    if (type === 'rabbit') {
+      // Long ears
+      const earGeo = new THREE.CapsuleGeometry(0.05, config.earLength, 4, 8);
+      const earMat = new THREE.MeshBasicMaterial({ color: config.color });
+      const leftEar = new THREE.Mesh(earGeo, earMat);
+      leftEar.position.set(-0.1, config.bodyHeight + 0.35, 0);
+      leftEar.rotation.z = -0.2;
+      group.add(leftEar);
+
+      const rightEar = new THREE.Mesh(earGeo, earMat);
+      rightEar.position.set(0.1, config.bodyHeight + 0.35, 0);
+      rightEar.rotation.z = 0.2;
+      group.add(rightEar);
+    } else if (type === 'cat') {
+      // Triangular ears
+      const earGeo = new THREE.ConeGeometry(0.1, 0.2, 4);
+      const earMat = new THREE.MeshBasicMaterial({ color: config.color });
+      const leftEar = new THREE.Mesh(earGeo, earMat);
+      leftEar.position.set(-0.12, config.bodyHeight + 0.2, 0);
+      group.add(leftEar);
+
+      const rightEar = new THREE.Mesh(earGeo, earMat);
+      rightEar.position.set(0.12, config.bodyHeight + 0.2, 0);
+      group.add(rightEar);
+    } else if (type === 'bear') {
+      // Round ears
+      const earGeo = new THREE.SphereGeometry(0.08, 8, 8);
+      const earMat = new THREE.MeshBasicMaterial({ color: config.color });
+      const leftEar = new THREE.Mesh(earGeo, earMat);
+      leftEar.position.set(-0.18, config.bodyHeight + 0.2, 0);
+      group.add(leftEar);
+
+      const rightEar = new THREE.Mesh(earGeo, earMat);
+      rightEar.position.set(0.18, config.bodyHeight + 0.2, 0);
+      group.add(rightEar);
+    } else if (type === 'boy') {
+      // Eyes
+      this.addEyes(group, config.bodyHeight + 0.15);
+    } else if (type === 'girl') {
+      // Eyes
+      this.addEyes(group, config.bodyHeight + 0.15);
+
+      // Hair clip
+      const clipGeo = new THREE.SphereGeometry(0.06, 8, 8);
+      const clipMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
+      const clip = new THREE.Mesh(clipGeo, clipMat);
+      clip.position.set(0.15, config.bodyHeight + 0.22, 0.1);
+      group.add(clip);
+    }
+
+    return group;
+  }
+
+  createBlock(x, z, type, reward) {
+    const group = new THREE.Group();
+    group.userData = { type, reward, x, z };
+
+    const geometry = new THREE.BoxGeometry(
+      this.blockConfig.width,
+      this.blockConfig.height,
+      this.blockConfig.depth
+    );
+    const material = this.blockMaterials[type] || this.blockMaterials.normal;
+    const mesh = new THREE.Mesh(geometry, material);
+    group.add(mesh);
+
+    if (type === 'start' || type === 'end') {
+      const edges = new THREE.EdgesGeometry(geometry);
+      const line = new THREE.LineSegments(
+        edges,
+        new THREE.LineBasicMaterial({ color: 0x000000 })
+      );
+      group.add(line);
+    }
+
+    if (reward && this.rewardGeometries[reward]) {
+      const rewardGeo = this.rewardGeometries[reward];
+      const rewardMat = this.rewardMaterials[reward];
+      const rewardMesh = new THREE.Mesh(rewardGeo, rewardMat);
+      rewardMesh.position.y = this.blockConfig.height / 2 + 0.2;
+      group.add(rewardMesh);
+    }
+
+    group.position.set(x * this.blockConfig.width, 0, z * this.blockConfig.depth);
+    return group;
+  }
+
+  switchCharacter(type) {
+    if (!this.characters[type]) return;
+
+    // Remove current player and dispose resources
+    if (this.player) {
+      this.player.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+      });
+      this.scene.remove(this.player);
+    }
+
+    // Update current character
+    this.currentCharacter = type;
+
+    // Create and add new character
+    this.player = this.createCharacter(type);
+    this.player.position.set(0, 0.5, 0);
+    this.scene.add(this.player);
+  }
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+// Initialize game
+window.game = new Game();
