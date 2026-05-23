@@ -68,6 +68,17 @@
         this.animate();
       }
 
+      addEyes(group, y) {
+        const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        leftEye.position.set(-0.08, y, 0.18);
+        group.add(leftEye);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        rightEye.position.set(0.08, y, 0.18);
+        group.add(rightEye);
+      }
+
       createCharacter(type) {
         const config = this.characters[type];
         if (!config) return undefined;
@@ -126,26 +137,10 @@
           group.add(rightEar);
         } else if (type === 'boy') {
           // Eyes
-          const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
-          const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-          const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-          leftEye.position.set(-0.08, config.bodyHeight + 0.15, 0.18);
-          group.add(leftEye);
-
-          const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-          rightEye.position.set(0.08, config.bodyHeight + 0.15, 0.18);
-          group.add(rightEye);
+          this.addEyes(group, config.bodyHeight + 0.15);
         } else if (type === 'girl') {
           // Eyes
-          const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
-          const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-          const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-          leftEye.position.set(-0.08, config.bodyHeight + 0.15, 0.18);
-          group.add(leftEye);
-
-          const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-          rightEye.position.set(0.08, config.bodyHeight + 0.15, 0.18);
-          group.add(rightEye);
+          this.addEyes(group, config.bodyHeight + 0.15);
 
           // Hair clip
           const clipGeo = new THREE.SphereGeometry(0.06, 8, 8);
@@ -161,8 +156,12 @@
       switchCharacter(type) {
         if (!this.characters[type]) return;
 
-        // Remove current player
+        // Remove current player and dispose resources
         if (this.player) {
+          this.player.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) obj.material.dispose();
+          });
           this.scene.remove(this.player);
         }
 
