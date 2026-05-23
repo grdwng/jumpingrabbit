@@ -102,6 +102,284 @@
           'ArrowRight': { x: 1, z: 0 }
         };
 
+        // Level system state
+        this.currentLevel = 1;
+        this.score = 0;
+        this.energyCount = 0;
+        this.hasShield = false;
+
+        // 20 levels with increasing difficulty
+        this.levels = [
+          // Level 1-3: 入门 - Simple straight paths
+          {
+            id: 1,
+            name: "起步",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'energy'},
+              {x: 4, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 2,
+            name: "继续前进",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 5, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 3,
+            name: "平稳之路",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'heart'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 4, z: 0, type: 'normal', reward: 'coin'},
+              {x: 5, z: 0, type: 'normal', reward: 'energy'},
+              {x: 6, z: 0, type: 'end', reward: null}
+            ]
+          },
+          // Level 4-6: 基础 - Introduce turns
+          {
+            id: 4,
+            name: "初次转弯",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'energy'},
+              {x: 3, z: -1, type: 'normal', reward: 'coin'},
+              {x: 3, z: -2, type: 'normal', reward: 'coin'},
+              {x: 3, z: -3, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 5,
+            name: "S形道路",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'energy'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: -1, type: 'normal', reward: 'coin'},
+              {x: 2, z: -2, type: 'normal', reward: 'coin'},
+              {x: 1, z: -3, type: 'normal', reward: 'energy'},
+              {x: 0, z: -4, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 6,
+            name: "蜿蜒小径",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: -1, type: 'normal', reward: 'heart'},
+              {x: 2, z: -2, type: 'normal', reward: 'coin'},
+              {x: 1, z: -2, type: 'normal', reward: 'energy'},
+              {x: 0, z: -2, type: 'normal', reward: 'coin'},
+              {x: -1, z: -2, type: 'end', reward: null}
+            ]
+          },
+          // Level 7-10: 进阶 - Gaps and faster pace
+          {
+            id: 7,
+            name: "跨越间隙",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 5, z: 0, type: 'normal', reward: 'coin'},
+              {x: 6, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 8,
+            name: "连续跳跃",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'energy'},
+              {x: 5, z: 0, type: 'normal', reward: 'coin'},
+              {x: 6, z: 0, type: 'normal', reward: 'coin'},
+              {x: 7, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 9,
+            name: "节奏跨越",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 6, z: 0, type: 'normal', reward: 'heart'},
+              {x: 8, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 10,
+            name: "回旋之路",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 2, z: -1, type: 'normal', reward: 'energy'},
+              {x: 2, z: -2, type: 'normal', reward: 'coin'},
+              {x: 3, z: -2, type: 'normal', reward: null},
+              {x: 4, z: -2, type: 'end', reward: null}
+            ]
+          },
+          // Level 11-15: 挑战 - Multiple paths, traps
+          {
+            id: 11,
+            name: "双岔路口",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'heart'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 4, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: -1, type: 'normal', reward: 'energy'},
+              {x: 2, z: -2, type: 'normal', reward: 'coin'},
+              {x: 1, z: -3, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 12,
+            name: "谨慎前行",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 5, z: 0, type: 'normal', reward: 'coin'},
+              {x: 6, z: 0, type: 'normal', reward: null},
+              {x: 7, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 13,
+            name: "螺旋之路",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'energy'},
+              {x: 3, z: -1, type: 'normal', reward: 'coin'},
+              {x: 3, z: -2, type: 'normal', reward: 'heart'},
+              {x: 2, z: -3, type: 'normal', reward: 'coin'},
+              {x: 1, z: -3, type: 'normal', reward: 'coin'},
+              {x: 0, z: -3, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 14,
+            name: "窄道穿行",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 4, z: 0, type: 'normal', reward: 'coin'},
+              {x: 5, z: 0, type: 'normal', reward: 'energy'},
+              {x: 7, z: 0, type: 'normal', reward: 'coin'},
+              {x: 8, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 15,
+            name: "综合考验",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 4, z: -1, type: 'normal', reward: 'coin'},
+              {x: 4, z: -2, type: 'normal', reward: 'heart'},
+              {x: 5, z: -2, type: 'normal', reward: null},
+              {x: 7, z: -2, type: 'end', reward: null}
+            ]
+          },
+          // Level 16-20: 高难 - Hard jumps, combined traps
+          {
+            id: 16,
+            name: "精准跳跃",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'energy'},
+              {x: 5, z: 0, type: 'normal', reward: 'coin'},
+              {x: 7, z: 0, type: 'normal', reward: 'heart'},
+              {x: 9, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 17,
+            name: "长途奔袭",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 5, z: 0, type: 'normal', reward: 'energy'},
+              {x: 7, z: 0, type: 'normal', reward: 'coin'},
+              {x: 9, z: 0, type: 'normal', reward: 'coin'},
+              {x: 11, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 18,
+            name: "迷宫挑战",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 2, z: 0, type: 'normal', reward: null},
+              {x: 4, z: 0, type: 'normal', reward: 'energy'},
+              {x: 4, z: -1, type: 'normal', reward: 'coin'},
+              {x: 4, z: -2, type: 'normal', reward: null},
+              {x: 3, z: -3, type: 'normal', reward: 'heart'},
+              {x: 2, z: -4, type: 'normal', reward: 'coin'},
+              {x: 1, z: -5, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 19,
+            name: "极限跨越",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: null},
+              {x: 5, z: 0, type: 'normal', reward: 'energy'},
+              {x: 7, z: 0, type: 'normal', reward: null},
+              {x: 9, z: 0, type: 'normal', reward: 'heart'},
+              {x: 11, z: 0, type: 'end', reward: null}
+            ]
+          },
+          {
+            id: 20,
+            name: "终极试炼",
+            blocks: [
+              {x: 0, z: 0, type: 'start', reward: null},
+              {x: 1, z: 0, type: 'normal', reward: 'coin'},
+              {x: 3, z: 0, type: 'normal', reward: 'coin'},
+              {x: 5, z: 0, type: 'normal', reward: null},
+              {x: 5, z: -1, type: 'normal', reward: 'energy'},
+              {x: 5, z: -2, type: 'normal', reward: 'coin'},
+              {x: 6, z: -2, type: 'normal', reward: null},
+              {x: 8, z: -2, type: 'normal', reward: 'heart'},
+              {x: 10, z: -2, type: 'end', reward: null}
+            ]
+          }
+        ];
+
         // Create player character
         this.player = this.createCharacter(this.currentCharacter);
         this.player.position.set(0, 0.5, 0);
@@ -357,6 +635,45 @@
       resetPlayerPosition() {
         this.player.position.set(0, 0.5, 0);
         this.gameState = 'waiting';
+      }
+
+      loadLevel(levelId) {
+        const level = this.levels.find(l => l.id === levelId);
+        if (!level) {
+          console.error(`Level ${levelId} not found`);
+          return;
+        }
+
+        // Clear existing blocks
+        this.blocks.forEach(block => {
+          block.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+          });
+          this.scene.remove(block);
+        });
+        this.blocks = [];
+
+        // Create new blocks for this level
+        level.blocks.forEach(blockData => {
+          const block = this.createBlock(blockData.x, blockData.z, blockData.type, blockData.reward);
+          this.blocks.push(block);
+          this.scene.add(block);
+        });
+
+        // Reset player position to start block
+        this.player.position.set(0, 0.5, 0);
+        this.gameState = 'waiting';
+        this.currentLevel = levelId;
+      }
+
+      nextLevel() {
+        const nextLevelId = this.currentLevel + 1;
+        if (nextLevelId <= this.levels.length) {
+          this.loadLevel(nextLevelId);
+        } else {
+          console.log('All levels completed!');
+          this.gameState = 'completed';
+        }
       }
 
       animate() {
