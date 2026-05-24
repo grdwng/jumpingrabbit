@@ -6,683 +6,1043 @@
   <title>跳跳小方块</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; }
+    body { overflow: hidden; font-family: 'Nunito', sans-serif; }
     canvas { display: block; }
+
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 15px 30px;
+      display: none;
+      justify-content: space-between;
+      background: rgba(255,255,255,0.9);
+      font-size: 1.2em;
+      z-index: 50;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    #hud.visible { display: flex; }
+    .hud-left, .hud-right, .hud-center { display: flex; gap: 20px; align-items: center; }
+
+    #message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px 50px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      z-index: 100;
+    }
+    #message h2 { font-size: 1.8em; margin-bottom: 15px; }
+    #message button {
+      padding: 12px 30px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 10px;
+      background: #7EC8E3;
+      color: white;
+      cursor: pointer;
+      margin: 5px;
+    }
+    #message button:hover { background: #5BA8C8; }
   </style>
 </head>
 <body>
+  <div id="hud">
+    <div class="hud-left">
+      <span id="lives">❤️❤️❤️</span>
+      <span id="energy">⚡0/5</span>
+    </div>
+    <div class="hud-center">
+      <span id="level">关卡 1</span>
+    </div>
+    <div class="hud-right">
+      <span id="score">0</span> 🪙
+    </div>
+  </div>
+
+  <div id="message">
+    <h2>🎮 跳跳小方块</h2>
+    <p style="margin-bottom:20px">方向键控制跳跃，收集奖励到达终点</p>
+    <button onclick="game.start()">开始游戏</button>
+  </div>
+
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
   </script>
   <script type="module">
     import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    console.log('Script started');
+
+    class AudioManager {
+      constructor() { this.ctx = null; this.muted = false; }
+      init() { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      playSound(type) {
+        if (this.muted || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        switch (type) {
+          case 'jump':
+            osc.frequency.value = 300; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.1); break;
+          case 'coin':
+            osc.frequency.value = 800; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.15); break;
+          case 'energy':
+            osc.frequency.value = 600; osc.type = 'triangle';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.2); break;
+          case 'heart':
+            osc.frequency.value = 500; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.25); break;
+          case 'death':
+            osc.frequency.value = 200; osc.type = 'sawtooth';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.3); break;
+          case 'victory':
+            [523, 659, 784, 1047].forEach((freq, i) => {
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.connect(g); g.connect(this.ctx.destination);
+              o.frequency.value = freq; o.type = 'sine';
+              g.gain.setValueAtTime(0.2, this.ctx.currentTime + i * 0.15);
+              g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.15 + 0.3);
+              o.start(this.ctx.currentTime + i * 0.15);
+              o.stop(this.ctx.currentTime + i * 0.15 + 0.3);
+            }); break;
+        }
+      }
+      toggleMute() { this.muted = !this.muted; }
+    }
 
     class Game {
       constructor() {
-        // Scene with sky blue background
+        // Scene
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x7EC8E3);
+        this.scene.background = new THREE.Color(0x87CEEB);
 
-        // Camera - PerspectiveCamera, 60 FOV, position (0, 5, 8)
-        this.camera = new THREE.PerspectiveCamera(
-          60,
-          window.innerWidth / window.innerHeight,
-          0.1,
-          1000
-        );
-        this.camera.position.set(0, 5, 8);
+        // Camera - positioned to see the 3D blocks clearly (adjusted for 3x scale)
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.set(0, 36, 36);
+        this.camera.lookAt(0, 0, 0);
 
-        // Renderer - WebGLRenderer with antialias
+        // Renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(this.renderer.domElement);
 
-        // Window resize handling
-        window.addEventListener('resize', () => {
-          this.camera.aspect = window.innerWidth / window.innerHeight;
-          this.camera.updateProjectionMatrix();
-          this.renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        // Lighting - key for 3D appearance
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambient);
 
-        // Character configuration - 5 playable characters
-        this.characters = {
-          rabbit: { name: '小兔子', color: 0xFFB6C1, bodyHeight: 0.6, earLength: 0.3 },
-          cat: { name: '小猫咪', color: 0xFFA500, bodyHeight: 0.5 },
-          bear: { name: '小熊', color: 0x8B4513, bodyHeight: 0.6 },
-          boy: { name: '小男孩', color: 0x4169E1, bodyHeight: 0.7 },
-          girl: { name: '小女孩', color: 0xFF69B4, bodyHeight: 0.65 }
-        };
-        this.currentCharacter = 'rabbit';
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(-20, 30, 10);
+        sun.castShadow = true;
+        sun.shadow.mapSize.width = 2048;
+        sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.near = 0.5;
+        sun.shadow.camera.far = 100;
+        sun.shadow.camera.left = -20;
+        sun.shadow.camera.right = 20;
+        sun.shadow.camera.top = 20;
+        sun.shadow.camera.bottom = -20;
+        this.scene.add(sun);
 
-        // Block configuration
-        this.blockConfig = {
-          width: 1.2,
-          height: 0.5,
-          depth: 1.2
-        };
+        // Background elements - floating clouds
+        this.createClouds();
 
-        // Block materials
+        // Block config (3x scale, flat floating blocks: 4.5 x 2.25 x 4.5)
+        this.blockConfig = { width: 4.5, height: 2.25, depth: 4.5 };
         this.blockMaterials = {
           normal: new THREE.MeshLambertMaterial({ color: 0xFFE5A0 }),
           start: new THREE.MeshLambertMaterial({ color: 0x98D9A4 }),
           end: new THREE.MeshLambertMaterial({ color: 0xFFD700 })
         };
+        this.blockMaterials.normal.emissive = new THREE.Color(0x332200);
+        this.blockMaterials.start.emissive = new THREE.Color(0x003300);
+        this.blockMaterials.end.emissive = new THREE.Color(0x332200);
 
-        // Reward geometries and materials
         this.rewardGeometries = {
-          coin: new THREE.CylinderGeometry(0.15, 0.15, 0.05, 16),
-          energy: new THREE.OctahedronGeometry(0.15),
-          heart: new THREE.SphereGeometry(0.12, 16, 16)
+          coin: new THREE.CylinderGeometry(0.2, 0.2, 0.08, 16),
+          energy: new THREE.OctahedronGeometry(0.2),
+          heart: new THREE.SphereGeometry(0.15, 16, 16)
         };
-
         this.rewardMaterials = {
-          coin: new THREE.MeshLambertMaterial({ color: 0xFFD700 }),
-          energy: new THREE.MeshLambertMaterial({ color: 0xB39DDB }),
-          heart: new THREE.MeshLambertMaterial({ color: 0xFF6B8A })
+          coin: new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x332200 }),
+          energy: new THREE.MeshLambertMaterial({ color: 0xB39DDB, emissive: 0x220033 }),
+          heart: new THREE.MeshLambertMaterial({ color: 0xFF6B8A, emissive: 0x330011 })
         };
 
-        // Array to hold blocks in current level
         this.blocks = [];
-
-        // Game state
-        this.gameState = 'waiting';
+        this.worldOffset = { x: 0, z: 0 };
+        this.gameState = 'menu';
         this.jumpDuration = 400;
         this.lives = 3;
-
-        // Direction mapping for arrow keys
-        this.directionMap = {
-          'ArrowUp': { x: 0, z: -1 },
-          'ArrowDown': { x: 0, z: 1 },
-          'ArrowLeft': { x: -1, z: 0 },
-          'ArrowRight': { x: 1, z: 0 }
-        };
-
-        // Level system state
-        this.currentLevel = 1;
         this.score = 0;
         this.energyCount = 0;
         this.hasShield = false;
 
-        // 20 levels with increasing difficulty
-        this.levels = [
-          // Level 1-3: 入门 - Simple straight paths
-          {
-            id: 1,
-            name: "起步",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'energy'},
-              {x: 4, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 2,
-            name: "继续前进",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 5, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 3,
-            name: "平稳之路",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'heart'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 4, z: 0, type: 'normal', reward: 'coin'},
-              {x: 5, z: 0, type: 'normal', reward: 'energy'},
-              {x: 6, z: 0, type: 'end', reward: null}
-            ]
-          },
-          // Level 4-6: 基础 - Introduce turns
-          {
-            id: 4,
-            name: "初次转弯",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'energy'},
-              {x: 3, z: -1, type: 'normal', reward: 'coin'},
-              {x: 3, z: -2, type: 'normal', reward: 'coin'},
-              {x: 3, z: -3, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 5,
-            name: "S形道路",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'energy'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: -1, type: 'normal', reward: 'coin'},
-              {x: 2, z: -2, type: 'normal', reward: 'coin'},
-              {x: 1, z: -3, type: 'normal', reward: 'energy'},
-              {x: 0, z: -4, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 6,
-            name: "蜿蜒小径",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: -1, type: 'normal', reward: 'heart'},
-              {x: 2, z: -2, type: 'normal', reward: 'coin'},
-              {x: 1, z: -2, type: 'normal', reward: 'energy'},
-              {x: 0, z: -2, type: 'normal', reward: 'coin'},
-              {x: -1, z: -2, type: 'end', reward: null}
-            ]
-          },
-          // Level 7-10: 进阶 - Gaps and faster pace
-          {
-            id: 7,
-            name: "跨越间隙",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 5, z: 0, type: 'normal', reward: 'coin'},
-              {x: 6, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 8,
-            name: "连续跳跃",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'energy'},
-              {x: 5, z: 0, type: 'normal', reward: 'coin'},
-              {x: 6, z: 0, type: 'normal', reward: 'coin'},
-              {x: 7, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 9,
-            name: "节奏跨越",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 6, z: 0, type: 'normal', reward: 'heart'},
-              {x: 8, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 10,
-            name: "回旋之路",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 2, z: -1, type: 'normal', reward: 'energy'},
-              {x: 2, z: -2, type: 'normal', reward: 'coin'},
-              {x: 3, z: -2, type: 'normal', reward: null},
-              {x: 4, z: -2, type: 'end', reward: null}
-            ]
-          },
-          // Level 11-15: 挑战 - Multiple paths, traps
-          {
-            id: 11,
-            name: "双岔路口",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'heart'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 4, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: -1, type: 'normal', reward: 'energy'},
-              {x: 2, z: -2, type: 'normal', reward: 'coin'},
-              {x: 1, z: -3, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 12,
-            name: "谨慎前行",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 5, z: 0, type: 'normal', reward: 'coin'},
-              {x: 6, z: 0, type: 'normal', reward: null},
-              {x: 7, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 13,
-            name: "螺旋之路",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'energy'},
-              {x: 3, z: -1, type: 'normal', reward: 'coin'},
-              {x: 3, z: -2, type: 'normal', reward: 'heart'},
-              {x: 2, z: -3, type: 'normal', reward: 'coin'},
-              {x: 1, z: -3, type: 'normal', reward: 'coin'},
-              {x: 0, z: -3, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 14,
-            name: "窄道穿行",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 4, z: 0, type: 'normal', reward: 'coin'},
-              {x: 5, z: 0, type: 'normal', reward: 'energy'},
-              {x: 7, z: 0, type: 'normal', reward: 'coin'},
-              {x: 8, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 15,
-            name: "综合考验",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 4, z: -1, type: 'normal', reward: 'coin'},
-              {x: 4, z: -2, type: 'normal', reward: 'heart'},
-              {x: 5, z: -2, type: 'normal', reward: null},
-              {x: 7, z: -2, type: 'end', reward: null}
-            ]
-          },
-          // Level 16-20: 高难 - Hard jumps, combined traps
-          {
-            id: 16,
-            name: "精准跳跃",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'energy'},
-              {x: 5, z: 0, type: 'normal', reward: 'coin'},
-              {x: 7, z: 0, type: 'normal', reward: 'heart'},
-              {x: 9, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 17,
-            name: "长途奔袭",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 5, z: 0, type: 'normal', reward: 'energy'},
-              {x: 7, z: 0, type: 'normal', reward: 'coin'},
-              {x: 9, z: 0, type: 'normal', reward: 'coin'},
-              {x: 11, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 18,
-            name: "迷宫挑战",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 2, z: 0, type: 'normal', reward: null},
-              {x: 4, z: 0, type: 'normal', reward: 'energy'},
-              {x: 4, z: -1, type: 'normal', reward: 'coin'},
-              {x: 4, z: -2, type: 'normal', reward: null},
-              {x: 3, z: -3, type: 'normal', reward: 'heart'},
-              {x: 2, z: -4, type: 'normal', reward: 'coin'},
-              {x: 1, z: -5, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 19,
-            name: "极限跨越",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: null},
-              {x: 5, z: 0, type: 'normal', reward: 'energy'},
-              {x: 7, z: 0, type: 'normal', reward: null},
-              {x: 9, z: 0, type: 'normal', reward: 'heart'},
-              {x: 11, z: 0, type: 'end', reward: null}
-            ]
-          },
-          {
-            id: 20,
-            name: "终极试炼",
-            blocks: [
-              {x: 0, z: 0, type: 'start', reward: null},
-              {x: 1, z: 0, type: 'normal', reward: 'coin'},
-              {x: 3, z: 0, type: 'normal', reward: 'coin'},
-              {x: 5, z: 0, type: 'normal', reward: null},
-              {x: 5, z: -1, type: 'normal', reward: 'energy'},
-              {x: 5, z: -2, type: 'normal', reward: 'coin'},
-              {x: 6, z: -2, type: 'normal', reward: null},
-              {x: 8, z: -2, type: 'normal', reward: 'heart'},
-              {x: 10, z: -2, type: 'end', reward: null}
-            ]
-          }
-        ];
+        this.directionMap = {
+          'ArrowUp': { x: 0, z: -1 }, 'ArrowDown': { x: 0, z: 1 },
+          'ArrowLeft': { x: -1, z: 0 }, 'ArrowRight': { x: 1, z: 0 }
+        };
 
-        // Create player character
-        this.player = this.createCharacter(this.currentCharacter);
-        this.player.position.set(0, 0.5, 0);
+        this.levels = this.createLevels();
+        this.currentLevel = 1;
+
+        // Create procedural models as fallback
+        this.characters = this.createCharacterModels();
+        this.currentCharacterType = 'rabbit';
+        this.player = this.characters.rabbit.clone();
+        this.player.scale.set(3, 3, 3); // 3x scale
+        this.player.position.set(0, 3.0, 0);
         this.scene.add(this.player);
 
-        // Initialize input handling
-        this.initInput();
+        // Try to load the GLB rabbit model
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load(
+          'http://localhost:8080/cute_rabbit.glb',
+          (gltf) => {
+            // Success - use loaded model
+            const rabbitModel = gltf.scene;
 
-        // Simple animate loop
+            // Get bounding box to find model dimensions
+            const box = new THREE.Box3().setFromObject(rabbitModel);
+            const modelHeight = box.max.y - box.min.y;
+            const modelWidth = box.max.x - box.min.x;
+            const modelDepth = box.max.z - box.min.z;
+            const modelCenterX = (box.max.x + box.min.x) / 2;
+            const modelCenterZ = (box.max.z + box.min.z) / 2;
+
+            // Scale to match block size
+            // Block is 4.5 cube, rabbit should be: height=13.5 (3x), width/depth=4.5 (100%)
+            const targetHeight = 4.5 * 3; // 13.5
+            const targetWidthDepth = 4.5; // 100% of block
+            const scaleY = targetHeight / modelHeight;
+            const scaleXZ = targetWidthDepth / Math.max(modelWidth, modelDepth);
+            rabbitModel.scale.set(scaleXZ, scaleY, scaleXZ);
+
+            // Re-calculate box after scaling
+            const scaledBox = new THREE.Box3().setFromObject(rabbitModel);
+            const scaledBottom = scaledBox.min.y;
+            const scaledCenterX = (scaledBox.max.x + scaledBox.min.x) / 2;
+            const scaledCenterZ = (scaledBox.max.z + scaledBox.min.z) / 2;
+
+            rabbitModel.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+              }
+            });
+
+            rabbitModel.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+              }
+            });
+
+            // Replace procedural rabbit with loaded one
+            this.scene.remove(this.player);
+            this.player = rabbitModel.clone();
+
+            // Position so bottom of model sits on block top, center aligned on X/Z
+            // Block top is at y=2.25, model bottom needs to align with that
+            this.player.position.set(0, 2.25 - scaledBottom, 0);
+
+            this.scene.add(this.player);
+            this.characters.rabbit = rabbitModel;
+            console.log('GLB rabbit loaded, scaleY:', scaleY, 'scaleXZ:', scaleXZ, 'bottom:', scaledBottom);
+          },
+          undefined,
+          (error) => {
+            console.log('Using procedural rabbit (GLB load failed):', error);
+          }
+        );
+
+        // Store procedural models for other characters
+        const proceduralModels = this.createCharacterModels();
+        this.characters.cat = proceduralModels.cat;
+        this.characters.bear = proceduralModels.bear;
+        this.characters.boy = proceduralModels.boy;
+        this.characters.girl = proceduralModels.girl;
+
+        this.audio = new AudioManager();
+
+        window.addEventListener('resize', () => this.onResize());
+        window.addEventListener('keydown', (e) => this.onKeyDown(e));
+
+        this.loadLevel(1);
         this.animate();
       }
 
-      addEyes(group, y) {
-        const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-        leftEye.position.set(-0.08, y, 0.18);
-        group.add(leftEye);
-        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-        rightEye.position.set(0.08, y, 0.18);
-        group.add(rightEye);
+      createClouds() {
+        const cloudGeo = new THREE.SphereGeometry(1, 8, 8);
+        const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        for (let i = 0; i < 15; i++) {
+          const cloud = new THREE.Group();
+          const scale = 0.5 + Math.random() * 1;
+          for (let j = 0; j < 3 + Math.floor(Math.random() * 3); j++) {
+            const sphere = new THREE.Mesh(cloudGeo, cloudMat);
+            sphere.position.set(j * 0.8, Math.random() * 0.3, Math.random() * 0.5);
+            sphere.scale.set(scale, scale * 0.6, scale);
+            cloud.add(sphere);
+          }
+          cloud.position.set(
+            (Math.random() - 0.5) * 60,
+            5 + Math.random() * 8,
+            -20 - Math.random() * 30
+          );
+          cloud.userData.speed = 0.01 + Math.random() * 0.02;
+          cloud.userData.startX = cloud.position.x;
+          cloud.userData.startZ = cloud.position.z;
+          this.scene.add(cloud);
+        }
       }
 
-      createCharacter(type) {
-        const config = this.characters[type];
-        if (!config) return undefined;
+      createCharacterModels() {
+        const models = {};
 
-        const group = new THREE.Group();
+        // Enhanced cute rabbit - similar to cute_rabbit.glb style
+        const rabbit = new THREE.Group();
 
-        // Body - CapsuleGeometry
-        const bodyGeo = new THREE.CapsuleGeometry(0.25, config.bodyHeight - 0.5, 4, 8);
-        const bodyMat = new THREE.MeshBasicMaterial({ color: config.color });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = config.bodyHeight / 2;
-        group.add(body);
+        // Body - soft round shape
+        const rabbitBodyGeo = new THREE.SphereGeometry(0.5, 20, 20);
+        const rabbitMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        const rabbitBody = new THREE.Mesh(rabbitBodyGeo, rabbitMat);
+        rabbitBody.position.y = 0.5;
+        rabbitBody.scale.set(1, 1.1, 0.95);
+        rabbitBody.castShadow = true;
+        rabbit.add(rabbitBody);
 
-        // Head - SphereGeometry
-        const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
-        const headMat = new THREE.MeshBasicMaterial({ color: config.color });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = config.bodyHeight + 0.1;
-        group.add(head);
+        // Belly patch - slightly pink
+        const bellyGeo = new THREE.SphereGeometry(0.3, 16, 16);
+        const bellyMat = new THREE.MeshLambertMaterial({ color: 0xFFE4E8 });
+        const belly = new THREE.Mesh(bellyGeo, bellyMat);
+        belly.position.set(0, 0.45, 0.25);
+        belly.scale.set(1, 0.8, 0.5);
+        rabbit.add(belly);
 
-        // Character-specific features
-        if (type === 'rabbit') {
-          // Long ears
-          const earGeo = new THREE.CapsuleGeometry(0.05, config.earLength, 4, 8);
-          const earMat = new THREE.MeshBasicMaterial({ color: config.color });
-          const leftEar = new THREE.Mesh(earGeo, earMat);
-          leftEar.position.set(-0.1, config.bodyHeight + 0.35, 0);
-          leftEar.rotation.z = -0.2;
-          group.add(leftEar);
+        // Head - bigger relative to body for cuteness
+        const rabbitHeadGeo = new THREE.SphereGeometry(0.42, 20, 20);
+        const rabbitHead = new THREE.Mesh(rabbitHeadGeo, rabbitMat);
+        rabbitHead.position.y = 1.15;
+        rabbitHead.scale.set(1, 0.95, 1);
+        rabbitHead.castShadow = true;
+        rabbit.add(rabbitHead);
 
-          const rightEar = new THREE.Mesh(earGeo, earMat);
-          rightEar.position.set(0.1, config.bodyHeight + 0.35, 0);
-          rightEar.rotation.z = 0.2;
-          group.add(rightEar);
-        } else if (type === 'cat') {
-          // Triangular ears
-          const earGeo = new THREE.ConeGeometry(0.1, 0.2, 4);
-          const earMat = new THREE.MeshBasicMaterial({ color: config.color });
-          const leftEar = new THREE.Mesh(earGeo, earMat);
-          leftEar.position.set(-0.12, config.bodyHeight + 0.2, 0);
-          group.add(leftEar);
+        // Eyes - large cute black eyes with highlight
+        const eyeGeo = new THREE.SphereGeometry(0.1, 16, 16);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1A1A1A });
+        const eyeHighlightGeo = new THREE.SphereGeometry(0.03, 8, 8);
+        const eyeHighlightMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
 
-          const rightEar = new THREE.Mesh(earGeo, earMat);
-          rightEar.position.set(0.12, config.bodyHeight + 0.2, 0);
-          group.add(rightEar);
-        } else if (type === 'bear') {
-          // Round ears
-          const earGeo = new THREE.SphereGeometry(0.08, 8, 8);
-          const earMat = new THREE.MeshBasicMaterial({ color: config.color });
-          const leftEar = new THREE.Mesh(earGeo, earMat);
-          leftEar.position.set(-0.18, config.bodyHeight + 0.2, 0);
-          group.add(leftEar);
+        // Left eye
+        const rabbitEyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        rabbitEyeL.position.set(-0.15, 1.2, 0.35);
+        rabbit.add(rabbitEyeL);
+        const eyeHighlightL = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
+        eyeHighlightL.position.set(-0.12, 1.23, 0.42);
+        rabbit.add(eyeHighlightL);
 
-          const rightEar = new THREE.Mesh(earGeo, earMat);
-          rightEar.position.set(0.18, config.bodyHeight + 0.2, 0);
-          group.add(rightEar);
-        } else if (type === 'boy') {
-          // Eyes
-          this.addEyes(group, config.bodyHeight + 0.15);
-        } else if (type === 'girl') {
-          // Eyes
-          this.addEyes(group, config.bodyHeight + 0.15);
+        // Right eye
+        const rabbitEyeR = new THREE.Mesh(eyeGeo, eyeMat);
+        rabbitEyeR.position.set(0.15, 1.2, 0.35);
+        rabbit.add(rabbitEyeR);
+        const eyeHighlightR = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
+        eyeHighlightR.position.set(0.18, 1.23, 0.42);
+        rabbit.add(eyeHighlightR);
 
-          // Hair clip
-          const clipGeo = new THREE.SphereGeometry(0.06, 8, 8);
-          const clipMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
-          const clip = new THREE.Mesh(clipGeo, clipMat);
-          clip.position.set(0.15, config.bodyHeight + 0.22, 0.1);
-          group.add(clip);
-        }
+        // Cute nose - pink oval
+        const noseGeo = new THREE.SphereGeometry(0.06, 12, 12);
+        noseGeo.scale(1, 0.7, 0.6);
+        const noseMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.position.set(0, 1.08, 0.4);
+        rabbit.add(nose);
 
-        return group;
+        // Mouth - tiny smile lines
+        const mouthGeo = new THREE.BoxGeometry(0.08, 0.02, 0.01);
+        const mouthMat = new THREE.MeshBasicMaterial({ color: 0xFF69B4 });
+        const mouthL = new THREE.Mesh(mouthGeo, mouthMat);
+        mouthL.position.set(-0.04, 1.02, 0.42);
+        mouthL.rotation.z = 0.3;
+        rabbit.add(mouthL);
+        const mouthR = new THREE.Mesh(mouthGeo, mouthMat);
+        mouthR.position.set(0.04, 1.02, 0.42);
+        mouthR.rotation.z = -0.3;
+        rabbit.add(mouthR);
+
+        // Cheeks - pink blush circles
+        const cheekGeo = new THREE.SphereGeometry(0.08, 12, 12);
+        const cheekMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1, transparent: true, opacity: 0.5 });
+        const cheekL = new THREE.Mesh(cheekGeo, cheekMat);
+        cheekL.position.set(-0.28, 1.1, 0.28);
+        cheekL.scale.set(1, 0.6, 0.3);
+        rabbit.add(cheekL);
+        const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
+        cheekR.position.set(0.28, 1.1, 0.28);
+        cheekR.scale.set(1, 0.6, 0.3);
+        rabbit.add(cheekR);
+
+        // Ears - long and cute with inner ear pink
+        const earGeo = new THREE.CapsuleGeometry(0.1, 0.7, 8, 16);
+        const earMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        const earInnerGeo = new THREE.CapsuleGeometry(0.05, 0.5, 8, 16);
+        const earInnerMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+
+        // Left ear
+        const rabbitEarL = new THREE.Mesh(earGeo, earMat);
+        rabbitEarL.position.set(-0.18, 1.75, -0.05);
+        rabbitEarL.rotation.z = -0.15;
+        rabbitEarL.rotation.x = 0.1;
+        rabbitEarL.castShadow = true;
+        rabbit.add(rabbitEarL);
+        const earInnerL = new THREE.Mesh(earInnerGeo, earInnerMat);
+        earInnerL.position.set(-0.18, 1.75, 0.02);
+        earInnerL.rotation.z = -0.15;
+        earInnerL.rotation.x = 0.1;
+        rabbit.add(earInnerL);
+
+        // Right ear
+        const rabbitEarR = new THREE.Mesh(earGeo, earMat);
+        rabbitEarR.position.set(0.18, 1.75, -0.05);
+        rabbitEarR.rotation.z = 0.15;
+        rabbitEarR.rotation.x = 0.1;
+        rabbitEarR.castShadow = true;
+        rabbit.add(rabbitEarR);
+        const earInnerR = new THREE.Mesh(earInnerGeo, earInnerMat);
+        earInnerR.position.set(0.18, 1.75, 0.02);
+        earInnerR.rotation.z = 0.15;
+        earInnerR.rotation.x = 0.1;
+        rabbit.add(earInnerR);
+
+        // Tiny front teeth
+        const toothGeo = new THREE.BoxGeometry(0.06, 0.08, 0.04);
+        const toothMat = new THREE.MeshLambertMaterial({ color: 0xFFFFEE });
+        const toothL = new THREE.Mesh(toothGeo, toothMat);
+        toothL.position.set(-0.03, 0.98, 0.4);
+        rabbit.add(toothL);
+        const toothR = new THREE.Mesh(toothGeo, toothMat);
+        toothR.position.set(0.03, 0.98, 0.4);
+        rabbit.add(toothR);
+
+        // Fluffy tail - small white ball
+        const tailGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        const tail = new THREE.Mesh(tailGeo, rabbitMat);
+        tail.position.set(0, 0.5, -0.45);
+        tail.castShadow = true;
+        rabbit.add(tail);
+
+        // Little front paws
+        const pawGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        const pawL = new THREE.Mesh(pawGeo, rabbitMat);
+        pawL.position.set(-0.25, 0.15, 0.2);
+        pawL.scale.set(1, 0.6, 1.2);
+        pawL.castShadow = true;
+        rabbit.add(pawL);
+        const pawR = new THREE.Mesh(pawGeo, rabbitMat);
+        pawR.position.set(0.25, 0.15, 0.2);
+        pawR.scale.set(1, 0.6, 1.2);
+        pawR.castShadow = true;
+        rabbit.add(pawR);
+
+        // Whiskers
+        const whiskerGeo = new THREE.BoxGeometry(0.15, 0.008, 0.008);
+        const whiskerMat = new THREE.MeshBasicMaterial({ color: 0xCCCCCC });
+        const whiskerPositions = [
+          [-0.3, 1.08, 0.35, 0.1],
+          [-0.32, 1.05, 0.35, 0.08],
+          [-0.28, 1.03, 0.35, 0.12],
+          [0.3, 1.08, 0.35, 0.1],
+          [0.32, 1.05, 0.35, 0.08],
+          [0.28, 1.03, 0.35, 0.12],
+        ];
+        whiskerPositions.forEach(([x, y, z, rot]) => {
+          const w = new THREE.Mesh(whiskerGeo, whiskerMat);
+          w.position.set(x, y, z);
+          w.rotation.y = rot;
+          rabbit.add(w);
+        });
+
+        models.rabbit = rabbit;
+
+        // Cat - with triangular ears
+        const cat = new THREE.Group();
+        const catMat = new THREE.MeshLambertMaterial({ color: 0xFFA500 });
+        const catBody = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), catMat);
+        catBody.position.y = 0.5;
+        catBody.scale.set(1, 1.1, 0.85);
+        catBody.castShadow = true;
+        cat.add(catBody);
+
+        const catHead = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), catMat);
+        catHead.position.y = 1.1;
+        catHead.castShadow = true;
+        cat.add(catHead);
+
+        const catEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat);
+        catEyeL.position.set(-0.14, 1.15, 0.3);
+        cat.add(catEyeL);
+        const catEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat);
+        catEyeR.position.set(0.14, 1.15, 0.3);
+        cat.add(catEyeR);
+
+        // Cat ears
+        const catEarGeo = new THREE.ConeGeometry(0.15, 0.25, 4);
+        const catEarL = new THREE.Mesh(catEarGeo, catMat);
+        catEarL.position.set(-0.2, 1.45, 0);
+        catEarL.rotation.z = -0.2;
+        catEarL.castShadow = true;
+        cat.add(catEarL);
+        const catEarR = new THREE.Mesh(catEarGeo, catMat);
+        catEarR.position.set(0.2, 1.45, 0);
+        catEarR.rotation.z = 0.2;
+        catEarR.castShadow = true;
+        cat.add(catEarR);
+
+        // Bear - round ears
+        const bear = new THREE.Group();
+        const bearMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        const bearBody = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), bearMat);
+        bearBody.position.y = 0.55;
+        bearBody.scale.set(1, 1.15, 0.9);
+        bearBody.castShadow = true;
+        bear.add(bearBody);
+
+        const bearHead = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), bearMat);
+        bearHead.position.y = 1.15;
+        bearHead.castShadow = true;
+        bear.add(bearHead);
+
+        const bearEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        bearEyeL.position.set(-0.13, 1.2, 0.32);
+        bear.add(bearEyeL);
+        const bearEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        bearEyeR.position.set(0.13, 1.2, 0.32);
+        bear.add(bearEyeR);
+
+        // Bear ears
+        const bearEarGeo = new THREE.SphereGeometry(0.12, 8, 8);
+        const bearEarL = new THREE.Mesh(bearEarGeo, bearMat);
+        bearEarL.position.set(-0.28, 1.5, 0.1);
+        bearEarL.castShadow = true;
+        bear.add(bearEarL);
+        const bearEarR = new THREE.Mesh(bearEarGeo, bearMat);
+        bearEarR.position.set(0.28, 1.5, 0.1);
+        bearEarR.castShadow = true;
+        bear.add(bearEarR);
+
+        // Boy
+        const boy = new THREE.Group();
+        const boyMat = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+        const boyBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.8, 16), boyMat);
+        boyBody.position.y = 0.4;
+        boyBody.castShadow = true;
+        boy.add(boyBody);
+
+        const boyHead = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshLambertMaterial({ color: 0xFFDBB4 }));
+        boyHead.position.y = 1;
+        boyHead.castShadow = true;
+        boy.add(boyHead);
+
+        const boyEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
+        boyEyeL.position.set(-0.12, 1.05, 0.28);
+        boy.add(boyEyeL);
+        const boyEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
+        boyEyeR.position.set(0.12, 1.05, 0.28);
+        boy.add(boyEyeR);
+
+        // Girl
+        const girl = new THREE.Group();
+        const girlMat = new THREE.MeshLambertMaterial({ color: 0xFF69B4 });
+        const girlBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.7, 16), girlMat);
+        girlBody.position.y = 0.35;
+        girlBody.castShadow = true;
+        girl.add(girlBody);
+
+        const girlHead = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshLambertMaterial({ color: 0xFFDBB4 }));
+        girlHead.position.y = 0.95;
+        girlHead.castShadow = true;
+        girl.add(girlHead);
+
+        const girlEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        girlEyeL.position.set(-0.12, 1, 0.28);
+        girl.add(girlEyeL);
+        const girlEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        girlEyeR.position.set(0.12, 1, 0.28);
+        girl.add(girlEyeR);
+
+        // Hair bow
+        const bowGeo = new THREE.SphereGeometry(0.1, 8, 8);
+        const bowMat = new THREE.MeshLambertMaterial({ color: 0xFF1493 });
+        const bow = new THREE.Mesh(bowGeo, bowMat);
+        bow.position.set(0.2, 1.2, 0.15);
+        bow.scale.set(1.5, 0.8, 0.5);
+        girl.add(bow);
+
+        models.rabbit = rabbit;
+        models.cat = cat;
+        models.bear = bear;
+        models.boy = boy;
+        models.girl = girl;
+
+        return models;
       }
 
-      switchCharacter(type) {
-        if (!this.characters[type]) return;
+      createLevels() {
+        return [
+          { id: 1, name: "起步", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal'},{x:4,z:0,type:'normal',reward:'coin'},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:'energy'},{x:10,z:0,type:'normal'},
+            {x:12,z:0,type:'normal',reward:'coin'},{x:14,z:0,type:'normal'},{x:16,z:0,type:'normal',reward:'heart'},
+            {x:18,z:0,type:'normal'},{x:20,z:0,type:'normal',reward:'coin'},{x:22,z:0,type:'end'}
+          ]},
+          { id: 2, name: "左转", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:10,z:-6,type:'normal'},
+            {x:10,z:-8,type:'normal',reward:'coin'},{x:10,z:-10,type:'end'}
+          ]},
+          { id: 3, name: "右转", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:12,z:0,type:'normal'},{x:12,z:-2,type:'normal',reward:'heart'},{x:12,z:-4,type:'normal'},
+            {x:12,z:-6,type:'normal',reward:'coin'},{x:12,z:-8,type:'end'}
+          ]},
+          { id: 4, name: "S形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'end'}
+          ]},
+          { id: 5, name: "Z形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:8,z:-2,type:'normal',reward:'coin'},
+            {x:8,z:-4,type:'normal'},{x:6,z:-4,type:'normal',reward:'heart'},{x:4,z:-4,type:'normal'},
+            {x:2,z:-4,type:'normal',reward:'coin'},{x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal',reward:'energy'},
+            {x:-4,z:-4,type:'end'}
+          ]},
+          { id: 6, name: "迷宫", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'normal'},{x:0,z:-6,type:'normal',reward:'coin'},{x:0,z:-8,type:'normal'},
+            {x:2,z:-8,type:'normal',reward:'heart'},{x:4,z:-8,type:'end'}
+          ]},
+          { id: 7, name: "螺旋", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal'},{x:-2,z:-2,type:'normal',reward:'coin'},
+            {x:-2,z:0,type:'normal'},{x:-2,z:2,type:'end'}
+          ]},
+          { id: 8, name: "回形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'end'}
+          ]},
+          { id: 9, name: "左右", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:4,z:-2,type:'normal',reward:'energy'},{x:4,z:-4,type:'normal'},{x:6,z:-4,type:'normal',reward:'coin'},
+            {x:8,z:-4,type:'normal'},{x:8,z:-2,type:'normal',reward:'heart'},{x:8,z:0,type:'normal',reward:'coin'},
+            {x:10,z:0,type:'normal'},{x:12,z:0,type:'normal',reward:'energy'},{x:14,z:0,type:'end'}
+          ]},
+          { id: 10, name: "蛇形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:6,z:-2,type:'normal'},{x:6,z:-4,type:'normal',reward:'coin'},
+            {x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'heart'},{x:0,z:-4,type:'normal'},
+            {x:-2,z:-4,type:'normal',reward:'coin'},{x:-2,z:-2,type:'normal'},{x:-2,z:0,type:'normal',reward:'energy'},
+            {x:-4,z:0,type:'end'}
+          ]},
+          { id: 11, name: "之字", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:4,z:-2,type:'normal',reward:'energy'},{x:4,z:-4,type:'normal'},{x:6,z:-4,type:'normal',reward:'coin'},
+            {x:8,z:-4,type:'normal'},{x:8,z:-2,type:'normal',reward:'heart'},{x:8,z:0,type:'normal',reward:'coin'},
+            {x:10,z:0,type:'normal'},{x:10,z:-2,type:'normal',reward:'energy'},{x:10,z:-4,type:'end'}
+          ]},
+          { id: 12, name: "折返", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'end'}
+          ]},
+          { id: 13, name: "双转", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:6,z:-2,type:'normal'},{x:6,z:-4,type:'normal',reward:'coin'},
+            {x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'heart'},{x:0,z:-4,type:'normal'},
+            {x:-2,z:-4,type:'normal',reward:'coin'},{x:-2,z:-2,type:'normal'},{x:-2,z:0,type:'end'}
+          ]},
+          { id: 14, name: "环绕", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'end'}
+          ]},
+          { id: 15, name: "交叉", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:8,z:-2,type:'normal',reward:'heart'},{x:6,z:-2,type:'normal'},{x:4,z:-2,type:'normal',reward:'coin'},
+            {x:2,z:-2,type:'normal'},{x:0,z:-2,type:'normal',reward:'energy'},{x:-2,z:-2,type:'end'}
+          ]},
+          { id: 16, name: "跳跃", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'normal'},{x:0,z:-6,type:'end'}
+          ]},
+          { id: 17, name: "三角", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'end'}
+          ]},
+          { id: 18, name: "阶梯", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:2,z:-2,type:'normal'},
+            {x:2,z:-4,type:'normal',reward:'energy'},{x:4,z:-4,type:'normal'},{x:6,z:-4,type:'normal',reward:'coin'},
+            {x:6,z:-2,type:'normal'},{x:6,z:0,type:'normal',reward:'heart'},{x:8,z:0,type:'normal'},
+            {x:10,z:0,type:'normal',reward:'coin'},{x:10,z:-2,type:'end'}
+          ]},
+          { id: 19, name: "环绕2", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'end'}
+          ]},
+          { id: 20, name: "终极", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:'coin'},{x:4,z:0,type:'normal'},
+            {x:6,z:0,type:'normal',reward:'energy'},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:'coin'},
+            {x:10,z:-2,type:'normal'},{x:10,z:-4,type:'normal',reward:'heart'},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:'coin'},{x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:'energy'},
+            {x:0,z:-4,type:'normal'},{x:0,z:-6,type:'normal',reward:'coin'},{x:2,z:-6,type:'normal'},
+            {x:4,z:-6,type:'normal',reward:'heart'},{x:6,z:-6,type:'end'}
+          ]}
+        ];
+      }
 
-        // Remove current player and dispose resources
-        if (this.player) {
-          this.player.traverse((obj) => {
-            if (obj.geometry) obj.geometry.dispose();
-            if (obj.material) obj.material.dispose();
-          });
-          this.scene.remove(this.player);
-        }
-
-        // Update current character
-        this.currentCharacter = type;
-
-        // Create and add new character
-        this.player = this.createCharacter(type);
-        this.player.position.set(0, 0.5, 0);
-        this.scene.add(this.player);
+      start() {
+        document.getElementById('message').style.display = 'none';
+        document.getElementById('hud').classList.add('visible');
+        this.gameState = 'waiting';
+        this.loadLevel(1);
       }
 
       createBlock(x, z, type = 'normal', reward = null) {
         const group = new THREE.Group();
-        group.userData = { type, reward, x, z };
+        group.userData = { type, reward, x, z, originalX: x * this.blockConfig.width, originalZ: z * this.blockConfig.depth };
 
-        // Create block geometry
-        const geometry = new THREE.BoxGeometry(
-          this.blockConfig.width,
-          this.blockConfig.height,
-          this.blockConfig.depth
-        );
-
-        // Create block mesh
-        const material = this.blockMaterials[type] || this.blockMaterials.normal;
-        const mesh = new THREE.Mesh(geometry, material);
+        const geo = new THREE.BoxGeometry(this.blockConfig.width, this.blockConfig.height, this.blockConfig.depth);
+        const mat = this.blockMaterials[type] || this.blockMaterials.normal;
+        const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         group.add(mesh);
 
-        // Add border for start/end blocks
-        if (type === 'start' || type === 'end') {
-          const edgeGeometry = new THREE.EdgesGeometry(geometry);
-          const edgeColor = type === 'start' ? 0x00FF00 : 0xFF0000;
-          const edgeMaterial = new THREE.LineBasicMaterial({ color: edgeColor });
-          const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
-          group.add(edges);
+        // Floating animation data
+        group.userData.floatOffset = Math.random() * Math.PI * 2;
+        group.userData.baseY = 0;
 
-          // Add flag for end block
+        if (type === 'start' || type === 'end') {
+          const edges = new THREE.EdgesGeometry(geo);
+          const edgeMat = new THREE.LineBasicMaterial({ color: type === 'start' ? 0x00FF00 : 0xFF0000 });
+          group.add(new THREE.LineSegments(edges, edgeMat));
+
           if (type === 'end') {
-            const poleGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.6, 8);
-            const poleMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-            const pole = new THREE.Mesh(poleGeo, poleMat);
-            pole.position.set(0, 0.55, 0);
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 8), new THREE.MeshLambertMaterial({ color: 0x8B4513 }));
+            pole.position.set(0, 0.8, 0);
+            pole.castShadow = true;
             group.add(pole);
 
-            const flagGeo = new THREE.PlaneGeometry(0.3, 0.2);
-            const flagMat = new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide });
-            const flag = new THREE.Mesh(flagGeo, flagMat);
-            flag.position.set(0.15, 0.8, 0);
+            const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.25), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
+            flag.position.set(0.2, 1.2, 0);
             flag.rotation.y = Math.PI / 2;
             group.add(flag);
           }
         }
 
-        // Add reward if specified
         if (reward && this.rewardGeometries[reward]) {
-          const rewardMesh = new THREE.Mesh(
-            this.rewardGeometries[reward],
-            this.rewardMaterials[reward]
-          );
-          rewardMesh.position.set(0, 0.4, 0);
-          rewardMesh.userData = { rewardType: reward, collected: false };
+          const rewardMesh = new THREE.Mesh(this.rewardGeometries[reward], this.rewardMaterials[reward]);
+          rewardMesh.position.y = 0.6;
+          rewardMesh.castShadow = true;
+          rewardMesh.userData.isReward = true;
           group.add(rewardMesh);
         }
 
-        // Set position based on grid coordinates
-        group.position.set(
-          x * this.blockConfig.width,
-          0,
-          z * this.blockConfig.depth
-        );
-
+        group.position.set(x * this.blockConfig.width, 0, z * this.blockConfig.depth);
         return group;
       }
 
-      initInput() {
-        window.addEventListener('keydown', (e) => this.onKeyDown(e));
+      loadLevel(levelId) {
+        const level = this.levels.find(l => l.id === levelId);
+        if (!level) return;
+
+        this.blocks.forEach(b => { this.scene.remove(b); });
+        this.blocks = [];
+
+        level.blocks.forEach(b => {
+          const block = this.createBlock(b.x, b.z, b.type, b.reward);
+          this.blocks.push(block);
+          this.scene.add(block);
+        });
+
+        this.currentLevel = levelId;
+        this.player.position.set(0, 2.25, 0);
+        this.worldOffset = { x: 0, z: 0 };
+        this.gameState = 'waiting';
+        this.updateHUD();
+      }
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
       }
 
       onKeyDown(e) {
+        if (this.gameState === 'menu') return;
         if (this.gameState !== 'waiting') return;
-        const direction = this.directionMap[e.key];
-        if (direction) {
+
+        if (!this.audio.ctx) this.audio.init();
+
+        const dir = this.directionMap[e.key];
+        if (dir) {
           e.preventDefault();
-          this.startJump(direction);
+          this.startJump(dir);
         }
       }
 
-      startJump(direction) {
+      startJump(dir) {
         this.gameState = 'jumping';
-        const startPos = this.player.position.clone();
-        const targetX = startPos.x + direction.x * this.blockConfig.width;
-        const targetZ = startPos.z + direction.z * this.blockConfig.depth;
+        this.audio.playSound('jump');
 
         const startTime = performance.now();
-        const jumpHeight = 0.8;
+        const worldMoveX = -dir.x * this.blockConfig.width * 2; // Jump 2 blocks
+        const worldMoveZ = -dir.z * this.blockConfig.depth * 2;
 
-        const animateJump = (currentTime) => {
-          const elapsed = currentTime - startTime;
-          const progress = Math.min(elapsed / this.jumpDuration, 1);
-          const arc = Math.sin(progress * Math.PI);
-          const currentX = startPos.x + (targetX - startPos.x) * progress;
-          const currentZ = startPos.z + (targetZ - startPos.z) * progress;
-          const currentY = startPos.y + arc * jumpHeight;
-          this.player.position.set(currentX, currentY, currentZ);
+        const animate = (now) => {
+          const t = Math.min((now - startTime) / this.jumpDuration, 1);
+          const arc = Math.sin(t * Math.PI);
 
-          if (progress < 1) {
-            requestAnimationFrame(animateJump);
+          // Keep player centered on screen, only animate Y (arc)
+          this.player.position.x = 0;
+          this.player.position.z = 0;
+          this.player.position.y = 2.25 + arc * 3.4; // 2.25 (on block) + arc * jump height
+
+          // Move world gradually during animation
+          const currentMoveX = worldMoveX * t;
+          const currentMoveZ = worldMoveZ * t;
+          this.blocks.forEach(b => {
+            b.position.x = b.userData.originalX + currentMoveX;
+            b.position.z = b.userData.originalZ + currentMoveZ;
+          });
+
+          // Move clouds too
+          this.scene.children.forEach(c => {
+            if (c.userData.speed) {
+              c.position.x = c.userData.startX + currentMoveX;
+              c.position.z = c.userData.startZ + currentMoveZ;
+            }
+          });
+
+          // Face direction of movement
+          if (dir.x !== 0 || dir.z !== 0) {
+            this.player.rotation.y = Math.atan2(dir.x, dir.z);
+          }
+
+          if (t < 1) {
+            requestAnimationFrame(animate);
           } else {
-            this.onJumpComplete(targetX, targetZ);
+            // Final position update
+            this.worldOffset.x += worldMoveX;
+            this.worldOffset.z += worldMoveZ;
+
+            // Update original positions for next jump
+            this.blocks.forEach(b => {
+              b.userData.originalX = b.position.x;
+              b.userData.originalZ = b.position.z;
+            });
+
+            // Reset player position
+            this.player.position.set(0, 2.25, 0);
+            this.onLand();
           }
         };
-
-        requestAnimationFrame(animateJump);
+        requestAnimationFrame(animate);
       }
 
-      onJumpComplete(x, z) {
-        const block = this.checkBlockAt(x, z);
-        if (block) {
-          this.gameState = 'waiting';
+      onLand() {
+        // Check if player landed on a block based on world positions
+        const playerWorldX = this.worldOffset.x;
+        const playerWorldZ = this.worldOffset.z;
+        let onBlock = null;
+
+        for (const b of this.blocks) {
+          const blockWorldX = b.position.x + this.worldOffset.x;
+          const blockWorldZ = b.position.z + this.worldOffset.z;
+          const dist = Math.sqrt(Math.pow(blockWorldX - playerWorldX, 2) + Math.pow(blockWorldZ - playerWorldZ, 2));
+          if (dist < 2.0) { // Increased threshold to allow landing on adjacent blocks
+            onBlock = b;
+            break;
+          }
+        }
+
+        if (onBlock) {
+          if (onBlock.userData.reward) {
+            this.collectReward(onBlock);
+          }
+          if (onBlock.userData.type === 'end') {
+            this.onVictory();
+          } else {
+            this.gameState = 'waiting';
+          }
         } else {
-          this.onDeath();
+          this.onFall();
         }
       }
 
       checkBlockAt(x, z) {
-        const threshold = 0.6;
-        for (const block of this.blocks) {
-          const dx = Math.abs(block.position.x - x);
-          const dz = Math.abs(block.position.z - z);
-          if (dx < threshold && dz < threshold) {
-            return block;
+        for (const b of this.blocks) {
+          if (Math.abs(b.position.x - x) < 0.8 && Math.abs(b.position.z - z) < 0.8) {
+            return b;
           }
         }
         return null;
       }
 
-      onDeath() {
-        this.lives = this.lives - 1;
-        this.gameState = 'dead';
-        if (this.lives > 0) {
-          this.resetPlayerPosition();
-        }
+      collectReward(block) {
+        const reward = block.userData.reward;
+        block.children.forEach(c => {
+          if (c.userData.isReward) {
+            this.audio.playSound(reward);
+            if (reward === 'coin') this.score += 100;
+            else if (reward === 'energy') {
+              this.energyCount++;
+              if (this.energyCount >= 5) { this.energyCount = 0; this.hasShield = true; }
+            } else if (reward === 'heart') {
+              this.lives = Math.min(this.lives + 1, 5);
+            }
+            c.visible = false;
+          }
+        });
+        this.updateHUD();
       }
 
-      resetPlayerPosition() {
-        this.player.position.set(0, 0.5, 0);
-        this.gameState = 'waiting';
+      onVictory() {
+        this.audio.playSound('victory');
+        this.gameState = 'victory';
+        setTimeout(() => {
+          if (this.currentLevel < 20) {
+            if (confirm(`🎉 过关！得分: ${this.score}\n是否进入下一关？`)) {
+              this.loadLevel(this.currentLevel + 1);
+            }
+          } else {
+            alert('🏆 恭喜通关全部关卡！');
+            this.loadLevel(1);
+          }
+        }, 500);
       }
 
-      loadLevel(levelId) {
-        const level = this.levels.find(l => l.id === levelId);
-        if (!level) {
-          console.error(`Level ${levelId} not found`);
+      onFall() {
+        if (this.hasShield) {
+          this.hasShield = false;
+          this.audio.playSound('jump');
+          this.gameState = 'waiting';
           return;
         }
 
-        // Clear existing blocks
-        this.blocks.forEach(block => {
-          block.traverse((obj) => {
-            if (obj.geometry) obj.geometry.dispose();
-          });
-          this.scene.remove(block);
-        });
-        this.blocks = [];
+        this.audio.playSound('death');
+        this.lives--;
+        this.updateHUD();
 
-        // Create new blocks for this level
-        level.blocks.forEach(blockData => {
-          const block = this.createBlock(blockData.x, blockData.z, blockData.type, blockData.reward);
-          this.blocks.push(block);
-          this.scene.add(block);
-        });
-
-        // Reset player position to start block
-        this.player.position.set(0, 0.5, 0);
-        this.gameState = 'waiting';
-        this.currentLevel = levelId;
+        if (this.lives <= 0) {
+          this.gameState = 'gameover';
+          setTimeout(() => {
+            if (confirm('💀 游戏结束！是否重新开始？')) {
+              this.lives = 3;
+              this.score = 0;
+              this.energyCount = 0;
+              this.loadLevel(1);
+            }
+          }, 500);
+        } else {
+          this.player.position.set(0, 2.25, 0);
+          this.worldOffset = { x: 0, z: 0 };
+          this.gameState = 'waiting';
+        }
       }
 
-      nextLevel() {
-        const nextLevelId = this.currentLevel + 1;
-        if (nextLevelId <= this.levels.length) {
-          this.loadLevel(nextLevelId);
-        } else {
-          console.log('All levels completed!');
-          this.gameState = 'completed';
-        }
+      updateHUD() {
+        document.getElementById('lives').textContent = '❤️'.repeat(this.lives);
+        document.getElementById('energy').textContent = `⚡${this.energyCount}/5`;
+        document.getElementById('score').textContent = this.score;
+        document.getElementById('level').textContent = `关卡 ${this.currentLevel}`;
       }
 
       animate() {
         requestAnimationFrame(() => this.animate());
+
+        // Animate clouds (move with world offset)
+        this.scene.children.forEach(c => {
+          if (c.userData.speed) {
+            c.position.x += c.userData.speed;
+            if (c.position.x > 40) c.position.x = -40;
+          }
+        });
+
+        // Animate blocks floating (more visible floating)
+        const time = performance.now() * 0.001;
+        this.blocks.forEach(b => {
+          b.position.y = Math.sin(time * 1.5 + b.userData.floatOffset) * 0.4;
+          b.children.forEach(c => {
+            if (c.userData.isReward) {
+              c.rotation.y += 0.02;
+              c.position.y = 0.8 + Math.sin(time * 3 + b.userData.floatOffset) * 0.3;
+            }
+          });
+        });
+
+        // Update camera to follow player's world position (adjusted for 3x scale)
+        this.camera.position.set(
+          -this.worldOffset.x,
+          36,
+          -this.worldOffset.z + 36
+        );
+        this.camera.lookAt(-this.worldOffset.x, 0, -this.worldOffset.z);
+
         this.renderer.render(this.scene, this.camera);
       }
     }
 
-    // Initialize game
     window.game = new Game();
   </script>
 </body>

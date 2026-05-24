@@ -258,6 +258,28 @@
       });
 
       // ========================================
+      // Task 9: UI系统测试
+      // ========================================
+      T.test('HUD元素应该存在', () => {
+        T.assert(document.getElementById('hud') !== null, 'HUD element should exist');
+      });
+
+      T.test('HUD更新方法应该存在', () => {
+        T.assert(typeof game.updateLivesDisplay === 'function', 'updateLivesDisplay should exist');
+        T.assert(typeof game.updateScoreDisplay === 'function', 'updateScoreDisplay should exist');
+        T.assert(typeof game.updateLevelDisplay === 'function', 'updateLevelDisplay should exist');
+        T.assert(typeof game.updateEnergyDisplay === 'function', 'updateEnergyDisplay should exist');
+        T.assert(typeof game.showHUD === 'function', 'showHUD should exist');
+        T.assert(typeof game.updateHUD === 'function', 'updateHUD should exist');
+      });
+
+      T.test('加载关卡后HUD应该显示', () => {
+        game.loadLevel(1);
+        const hud = document.getElementById('hud');
+        T.assert(hud.classList.contains('visible'), 'HUD should be visible after loading level');
+      });
+
+      // ========================================
       // Task 10: 庆祝系统测试
       // ========================================
       T.test('彩蛋关卡应该定义正确', () => {

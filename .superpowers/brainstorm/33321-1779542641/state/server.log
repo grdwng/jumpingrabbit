@@ -1,0 +1,9 @@
+{"type":"server-started","port":52021,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:52021","screen_dir":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content","state_dir":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/state"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/visual-style.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/camera.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/level-structure.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/controls.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/game-mode.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/rewards.html"}
+{"type":"screen-added","file":"/Users/gordonwangmbp/Documents/02_project/.superpowers/brainstorm/33321-1779542641/content/characters.html"}
+{"type":"server-stopped","reason":"idle timeout"}

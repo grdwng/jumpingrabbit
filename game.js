@@ -1,7 +1,101 @@
 import * as THREE from 'three';
 
+class AudioManager {
+  constructor() {
+    this.ctx = null;
+    this.muted = false;
+  }
+
+  init() {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  playSound(type) {
+    if (this.muted || !this.ctx) return;
+
+    const oscillator = this.ctx.createOscillator();
+    const gainNode = this.ctx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
+    switch (type) {
+      case 'jump':
+        oscillator.frequency.value = 300;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        oscillator.start();
+        oscillator.stop(this.ctx.currentTime + 0.1);
+        break;
+      case 'coin':
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        oscillator.start();
+        oscillator.stop(this.ctx.currentTime + 0.15);
+        break;
+      case 'energy':
+        oscillator.frequency.value = 600;
+        oscillator.type = 'triangle';
+        gainNode.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        oscillator.start();
+        oscillator.stop(this.ctx.currentTime + 0.2);
+        break;
+      case 'heart':
+        oscillator.frequency.value = 500;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+        oscillator.start();
+        oscillator.stop(this.ctx.currentTime + 0.25);
+        break;
+      case 'death':
+        oscillator.frequency.value = 200;
+        oscillator.type = 'sawtooth';
+        gainNode.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+        oscillator.start();
+        oscillator.stop(this.ctx.currentTime + 0.3);
+        break;
+      case 'victory':
+        // Play C-E-G-C arpeggio
+        const notes = [523, 659, 784, 1047];
+        notes.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.frequency.value = freq;
+          osc.type = 'sine';
+          gain.gain.setValueAtTime(0.2, this.ctx.currentTime + i * 0.15);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.15 + 0.3);
+          osc.start(this.ctx.currentTime + i * 0.15);
+          osc.stop(this.ctx.currentTime + i * 0.15 + 0.3);
+        });
+        break;
+    }
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+  }
+}
+
 class Game {
   constructor() {
+    // Background themes
+    this.backgroundThemes = {
+      sky: { name: '蓝天白云', sky: 0x7EC8E3, ground: 0x98D9A4 },
+      sunset: { name: '夕阳余晖', sky: 0xFF7F50, ground: 0x8B4513 },
+      night: { name: '星空夜景', sky: 0x1a1a2e, ground: 0x2d3436 },
+      forest: { name: '森林绿意', sky: 0x90EE90, ground: 0x228B22 },
+      candy: { name: '糖果色彩', sky: 0xFFB6C1, ground: 0xDDA0DD }
+    };
+    this.currentTheme = 'sky';
+    this.stars = null;
+
     // Scene with sky blue background
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x7EC8E3);
@@ -109,6 +203,9 @@ class Game {
     this.player = this.createCharacter(this.currentCharacter);
     this.player.position.set(0, 0.5, 0);
     this.scene.add(this.player);
+
+    // Audio manager for sound effects
+    this.audio = new AudioManager();
 
     // Initialize input handling
     this.initInput();
@@ -268,6 +365,10 @@ class Game {
 
   onKeyDown(e) {
     if (this.gameState !== 'waiting') return;
+    // Initialize audio context on first user interaction
+    if (!this.audio.ctx) {
+      this.audio.init();
+    }
     const direction = this.directionMap[e.key];
     if (direction) {
       e.preventDefault();
@@ -277,6 +378,7 @@ class Game {
 
   startJump(direction) {
     this.gameState = 'jumping';
+    this.audio.playSound('jump');
     const startPos = this.player.position.clone();
     const targetX = startPos.x + direction.x * this.blockConfig.width;
     const targetZ = startPos.z + direction.z * this.blockConfig.depth;
@@ -306,9 +408,34 @@ class Game {
   onJumpComplete(x, z) {
     const block = this.checkBlockAt(x, z);
     if (block) {
+      if (block.userData.reward) {
+        this.applyReward(block.userData.reward);
+        this.audio.playSound(block.userData.reward);
+      }
+      if (block.userData.type === 'end') {
+        this.triggerCelebration();
+      }
       this.gameState = 'waiting';
     } else {
       this.onDeath();
+    }
+  }
+
+  triggerCelebration() {
+    this.audio.playSound('victory');
+  }
+
+  applyReward(type) {
+    switch (type) {
+      case 'coin':
+        this.score = (this.score || 0) + 10;
+        break;
+      case 'energy':
+        this.energyCount = (this.energyCount || 0) + 1;
+        break;
+      case 'heart':
+        this.lives = Math.min((this.lives || 3) + 1, 5);
+        break;
     }
   }
 
@@ -325,6 +452,7 @@ class Game {
   }
 
   onDeath() {
+    this.audio.playSound('death');
     this.lives = (this.lives || 3) - 1;
     this.gameState = 'dead';
     if (this.lives > 0) {
@@ -375,6 +503,38 @@ class Game {
     if (this.currentLevel < this.levels.length) {
       this.loadLevel(this.currentLevel + 1);
     }
+  }
+
+  applyTheme(themeName) {
+    const theme = this.backgroundThemes[themeName];
+    if (!theme) return;
+    this.currentTheme = themeName;
+    this.scene.background = new THREE.Color(theme.sky);
+    // For night theme, add stars
+    if (themeName === 'night') {
+      this.addStars();
+    }
+    // Remove stars if not night theme
+    if (this.stars && themeName !== 'night') {
+      this.scene.remove(this.stars);
+      this.stars = null;
+    }
+  }
+
+  addStars() {
+    if (this.stars) return;
+    const geometry = new THREE.BufferGeometry();
+    const count = 200;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 100;
+      positions[i + 1] = Math.random() * 50 + 10;
+      positions[i + 2] = (Math.random() - 0.5) * 100;
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({ color: 0xFFFFFF, size: 0.3 });
+    this.stars = new THREE.Points(geometry, material);
+    this.scene.add(this.stars);
   }
 }
 
