@@ -304,31 +304,11 @@
         const isElectron = typeof window.require !== 'undefined';
         const resourcesPath = isElectron && typeof process !== 'undefined' ? process.resourcesPath : '';
         const basePath = isElectron ? resourcesPath + '/assets/' : './assets/';
+        this.basePath = basePath;  // Store for use in loadAllRewardModels
         this.rewardModels = {};
+        this.modelsLoaded = false;
+        this.modelsLoadingPromise = null;
         this.rewardFloatDist = this.blockConfig.width / 2; // 27
-
-        // Load reward GLB models
-        const rewardLoader = new GLTFLoader();
-        const loadReward = (name, path) => {
-          rewardLoader.load(
-            basePath + path,
-            (gltf) => {
-              const model = gltf.scene;
-              // Scale to fit on block: block is 54 wide, reward should be ~36 (2/3 of block)
-              const box = new THREE.Box3().setFromObject(model);
-              const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
-              const scale = 36 / size;
-              model.scale.set(scale, scale, scale);
-              this.rewardModels[name] = model;
-              console.log('Loaded reward model:', name);
-            },
-            undefined,
-            (error) => console.log('Failed to load reward', name, error)
-          );
-        };
-        loadReward('crystal', 'crystal.glb');
-        loadReward('heart', 'heart.glb');
-        loadReward('golden', 'golden.glb');
 
         this.worldOffset = { x: 0, z: 0 };
         this.gameState = 'menu';
@@ -443,6 +423,47 @@
 
         this.loadLevel(1);
         this.animate();
+
+        // Start preloading reward models
+        this.modelsLoadingPromise = this.loadAllRewardModels();
+      }
+
+      // Promise-based reward model preloader
+      loadAllRewardModels() {
+        return new Promise((resolve) => {
+          const loader = new GLTFLoader();
+          const models = ['crystal', 'heart', 'golden'];
+          let loadedCount = 0;
+
+          models.forEach((name) => {
+            loader.load(
+              this.basePath + name + '.glb',
+              (gltf) => {
+                const model = gltf.scene;
+                const box = new THREE.Box3().setFromObject(model);
+                const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+                const scale = 36 / size;
+                model.scale.set(scale, scale, scale);
+                this.rewardModels[name] = model;
+                loadedCount++;
+                console.log('Loaded reward model:', name, '(' + loadedCount + '/' + models.length + ')');
+                if (loadedCount === models.length) {
+                  this.modelsLoaded = true;
+                  resolve();
+                }
+              },
+              undefined,
+              (error) => {
+                console.log('Failed to load reward', name, error);
+                loadedCount++; // Count as loaded even on failure to avoid hanging
+                if (loadedCount === models.length) {
+                  this.modelsLoaded = true;
+                  resolve();
+                }
+              }
+            );
+          });
+        });
       }
 
       createClouds() {
@@ -913,6 +934,13 @@
       }
 
       start() {
+        if (!this.modelsLoaded) {
+          // If still loading, wait for it to complete then start
+          this.modelsLoadingPromise.then(() => {
+            this.start();
+          });
+          return;
+        }
         document.getElementById('message').style.display = 'none';
         document.getElementById('hud').classList.add('visible');
         this.gameState = 'waiting';
