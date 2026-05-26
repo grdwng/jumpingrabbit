@@ -298,7 +298,8 @@
         // Reward models loaded from GLB files (80% of blocks have rewards)
         // Load reward GLB models (use local path for packaged app)
         const isElectron = typeof window.require !== 'undefined';
-        const basePath = isElectron ? './assets/' : 'http://localhost:8080/';
+        const resourcesPath = isElectron && typeof process !== 'undefined' ? process.resourcesPath : '';
+        const basePath = isElectron ? resourcesPath + '/assets/' : 'http://localhost:8080/';
         this.rewardModels = {};
         this.rewardFloatDist = this.blockConfig.width / 2; // 27
 

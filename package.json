@@ -18,13 +18,26 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!dist/**/*",
+      "!test-results/**/*"
+    ],
     "mac": {
       "target": [
         "zip"
       ],
       "category": "public.app-category.games",
-      "icon": "icon.png"
-    }
+      "icon": "assets/icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": ["**/*.glb", "**/*.png", "**/*.jpeg"]
+      }
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
