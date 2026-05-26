@@ -339,6 +339,8 @@
         this.coinCount = 0;
         this.energyCount = 0;
         this.shieldCount = 0;
+        this.levelScore = 0;           // 本关得分 (level completion bonus)
+        this.accumulatedPoints = 0;    // 累计积分 (coins × 20 only, no level bonus)
         this.scaledBottom = 0;
         this.baseY = this.blockConfig.height - this.scaledBottom + 3.1;
 
@@ -1159,10 +1161,10 @@
       onVictory() {
         this.audio.playSound('victory');
         this.gameState = 'victory';
-        // Level completion bonus: 100 points + coins collected (20 per coin)
-        const levelBonus = 100;
-        this.score += levelBonus; // Add level bonus to score for display
-        this.totalScore += this.score; // Add to total (score = coins×20 + level bonus)
+        // Level score: always 100 for level completion
+        this.levelScore = 100;
+        // Accumulated points: only coins × 20 (no level bonus double-counting)
+        this.accumulatedPoints += this.coinCount * 20;
         this.updateHUD();
 
         // Visual celebration - flash screen and confetti burst
@@ -1186,12 +1188,12 @@
         title.style.cssText = 'font-size:6em;margin:0 0 40px 0;color:#333;';
 
         const score = document.createElement('p');
-        score.textContent = `本关得分: ⭐×100`;
+        score.textContent = `本关得分: ⭐×${this.levelScore}`;
         score.style.cssText = 'font-size:3.5em;margin:0 0 30px 0;';
 
-        const totalScore = document.createElement('p');
-        totalScore.textContent = `累计总分: ⭐×${this.totalScore}`;
-        totalScore.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#666;';
+        const accumulatedPoints = document.createElement('p');
+        accumulatedPoints.textContent = `累计积分: ⭐×${this.accumulatedPoints}`;
+        accumulatedPoints.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#666;';
 
         const rewards = document.createElement('p');
         rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  ⚡️×${this.shieldCount}  💰×${this.coinCount}`;
@@ -1211,7 +1213,7 @@
 
         dialog.appendChild(title);
         dialog.appendChild(score);
-        dialog.appendChild(totalScore);
+        dialog.appendChild(accumulatedPoints);
         dialog.appendChild(rewards);
         dialog.appendChild(btn);
         overlay.appendChild(dialog);
@@ -1304,7 +1306,7 @@
         h.lives.textContent = `❤️×${this.lives}`;
         h.energy.textContent = `💎×${this.energyCount}/5`;
         h.shield.textContent = `⚡️×${this.shieldCount}`;
-        h.score.textContent = `⭐×${this.totalScore}`;
+        h.score.textContent = `⭐×${this.accumulatedPoints}`;
         h.coins.textContent = `💰×${this.coinCount || 0}`;
         h.level.textContent = `关卡 ${this.currentLevel}`;
       }
