@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jumping Rabbit</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: 'Nunito', sans-serif; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 15px 30px;
+      display: none;
+      justify-content: space-between;
+      background: rgba(255,255,255,0.9);
+      font-size: 1.2em;
+      z-index: 50;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    #hud.visible { display: flex; }
+    .hud-left, .hud-right, .hud-center { display: flex; gap: 20px; align-items: center; }
+
+    #message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px 50px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      z-index: 100;
+    }
+    #message h2 { font-size: 1.8em; margin-bottom: 15px; }
+    #message button {
+      padding: 12px 30px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 10px;
+      background: #7EC8E3;
+      color: white;
+      cursor: pointer;
+      margin: 5px;
+    }
+    #message button:hover { background: #5BA8C8; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="hud-left">
+      <span id="lives">❤️×3</span>
+      <span id="energy">💎×0/5</span>
+      <span id="shield">⚡️×0</span>
+    </div>
+    <div class="hud-center">
+      <span id="level">关卡 1</span>
+    </div>
+    <div class="hud-right">
+      <span id="score">⭐×0</span>
+      <span id="coins">💰×0</span>
+    </div>
+  </div>
+
+  <div id="message">
+    <h2>🎮 跳跳小方块</h2>
+    <p style="margin-bottom:20px">方向键控制跳跃，收集奖励到达终点</p>
+    <button onclick="game.start()">开始游戏</button>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    console.log('Script started');
+
+    class AudioManager {
+      constructor() { this.ctx = null; this.muted = false; }
+      init() { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      playSound(type) {
+        if (this.muted || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        switch (type) {
+          case 'jump':
+            osc.frequency.value = 300; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.1); break;
+          case 'coin':
+            osc.frequency.value = 800; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.15); break;
+          case 'crystal':
+            // Crystal chime - bell-like with pure harmonics
+            osc.frequency.value = 880; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+            // Sparkle harmonics
+            [1320, 1760].forEach((freq, i) => {
+              setTimeout(() => {
+                if (this.muted || !this.ctx) return;
+                const osc2 = this.ctx.createOscillator();
+                const gain2 = this.ctx.createGain();
+                osc2.connect(gain2); gain2.connect(this.ctx.destination);
+                osc2.frequency.value = freq; osc2.type = 'sine';
+                gain2.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc2.start(); osc2.stop(this.ctx.currentTime + 0.3);
+              }, (i + 1) * 60);
+            }); break;
+          case 'heart':
+            // Soft thump - warm low-mid tone with decay
+            osc.frequency.value = 250; osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+            // Gentle echo
+            setTimeout(() => {
+              if (this.muted || !this.ctx) return;
+              const osc2 = this.ctx.createOscillator();
+              const gain2 = this.ctx.createGain();
+              osc2.connect(gain2); gain2.connect(this.ctx.destination);
+              osc2.frequency.value = 200; osc2.type = 'sine';
+              gain2.gain.setValueAtTime(0.2, this.ctx.currentTime);
+              gain2.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+              osc2.start(); osc2.stop(this.ctx.currentTime + 0.15);
+            }, 80); break;
+          case 'golden':
+            // Fanfare - rising arpeggio to triumph
+            [392, 494, 587, 784].forEach((freq, i) => {
+              if (this.muted || !this.ctx) return;
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.connect(g); g.connect(this.ctx.destination);
+              o.frequency.value = freq; o.type = 'triangle';
+              g.gain.setValueAtTime(0.18, this.ctx.currentTime + i * 0.1);
+              g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.1 + 0.4);
+              o.start(this.ctx.currentTime + i * 0.1);
+              o.stop(this.ctx.currentTime + i * 0.1 + 0.4);
+            }); break;
+          case 'energy':
+            osc.frequency.value = 600; osc.type = 'triangle';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.2); break;
+          case 'death':
+            osc.frequency.value = 200; osc.type = 'sawtooth';
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.3); break;
+          case 'victory':
+            // Grand fanfare - multiple chord progressions with echo
+            [523, 659, 784, 1047, 1319, 1568].forEach((freq, i) => {
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.connect(g); g.connect(this.ctx.destination);
+              o.frequency.value = freq; o.type = 'triangle';
+              g.gain.setValueAtTime(0.25, this.ctx.currentTime + i * 0.12);
+              g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.12 + 0.5);
+              o.start(this.ctx.currentTime + i * 0.12);
+              o.stop(this.ctx.currentTime + i * 0.12 + 0.5);
+            });
+            // Add sparkle echo
+            setTimeout(() => {
+              [2093, 2637, 3136].forEach((freq, i) => {
+                if (this.muted || !this.ctx) return;
+                const o = this.ctx.createOscillator();
+                const g = this.ctx.createGain();
+                o.connect(g); g.connect(this.ctx.destination);
+                o.frequency.value = freq; o.type = 'sine';
+                g.gain.setValueAtTime(0.15, this.ctx.currentTime + i * 0.08);
+                g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.08 + 0.3);
+                o.start(this.ctx.currentTime + i * 0.08);
+                o.stop(this.ctx.currentTime + i * 0.08 + 0.3);
+              });
+            }, 200);
+            // Extra bass hit
+            setTimeout(() => {
+              if (this.muted || !this.ctx) return;
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.connect(g); g.connect(this.ctx.destination);
+              o.frequency.value = 196; o.type = 'sine';
+              g.gain.setValueAtTime(0.3, this.ctx.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
+              o.start(); o.stop(this.ctx.currentTime + 0.4);
+            }, 100);
+            break;
+        }
+      }
+      toggleMute() { this.muted = !this.muted; }
+    }
+
+    class Game {
+      constructor() {
+        // Scene
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x87CEEB);
+
+        // Camera - positioned to see the 3D blocks clearly (adjusted for 3x scale)
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.set(0, 144, 144);
+        this.camera.lookAt(0, 0, 0);
+
+        // Renderer
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(this.renderer.domElement);
+
+        // Lighting - key for 3D appearance
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambient);
+
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(-20, 30, 10);
+        sun.castShadow = true;
+        sun.shadow.mapSize.width = 2048;
+        sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.near = 0.5;
+        sun.shadow.camera.far = 100;
+        sun.shadow.camera.left = -20;
+        sun.shadow.camera.right = 20;
+        sun.shadow.camera.top = 20;
+        sun.shadow.camera.bottom = -20;
+        this.scene.add(sun);
+
+        // Background elements - floating clouds
+        // Initialize clouds array BEFORE createClouds() since it uses .push()
+        this.blocks = [];
+        this.clouds = [];
+        this.createClouds();
+
+        // Block config (6x scale, flat floating blocks: 18 x 3.6 x 18) - double width/length
+        this.blockConfig = { width: 54, height: 7.2, depth: 54 };
+
+        // Block material styles - cached as material instances for reuse
+        // Opaque materials can be shared; transparent materials created per-instance
+        this.blockMaterials = {
+          crystal: new THREE.MeshPhysicalMaterial({
+            color: 0x88DDFF, transparent: true, opacity: 0.7,
+            roughness: 0.1, metalness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.1,
+            emissive: 0x112233
+          }),
+          ruby: new THREE.MeshLambertMaterial({
+            color: 0xFF4466, emissive: 0x441122, emissiveIntensity: 0.3
+          }),
+          emerald: new THREE.MeshLambertMaterial({
+            color: 0x44DD88, emissive: 0x113322, emissiveIntensity: 0.3
+          }),
+          amethyst: new THREE.MeshLambertMaterial({
+            color: 0xAA66FF, emissive: 0x221133, emissiveIntensity: 0.3
+          }),
+          gold: new THREE.MeshPhysicalMaterial({
+            color: 0xFFAA33, transparent: true, opacity: 0.8,
+            roughness: 0.2, metalness: 0.3, emissive: 0x442200
+          }),
+          sapphire: new THREE.MeshLambertMaterial({
+            color: 0x4488FF, emissive: 0x112244, emissiveIntensity: 0.3
+          }),
+          rose: new THREE.MeshPhysicalMaterial({
+            color: 0xFFB6C1, transparent: true, opacity: 0.75,
+            roughness: 0.15, metalness: 0.05, clearcoat: 0.8, emissive: 0x331122
+          }),
+          topaz: new THREE.MeshLambertMaterial({
+            color: 0xFFDD66, emissive: 0x443300, emissiveIntensity: 0.3
+          }),
+          // Start/end block materials
+          start: new THREE.MeshLambertMaterial({ color: 0x98D9A4, emissive: 0x003300 }),
+          end: new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x443300 })
+        };
+        // Base materials for start/end blocks
+        // normal is assigned dynamically per block in createBlock()
+
+        // Material names for random selection (shared, safe for opaque)
+        this.blockMaterialNames = ['crystal', 'ruby', 'emerald', 'amethyst', 'gold', 'sapphire', 'rose', 'topaz'];
+
+        // Reward models loaded from GLB files (80% of blocks have rewards)
+        // Load reward GLB models (use local path for packaged app)
+        const isElectron = typeof window.require !== 'undefined';
+        const basePath = isElectron ? 'assets/' : 'http://localhost:8080/';
+        this.rewardModels = {};
+        this.rewardFloatDist = this.blockConfig.width / 2; // 27
+
+        // Load reward GLB models
+        const rewardLoader = new GLTFLoader();
+        const loadReward = (name, path) => {
+          rewardLoader.load(
+            basePath + path,
+            (gltf) => {
+              const model = gltf.scene;
+              // Scale to fit on block: block is 54 wide, reward should be ~36 (2/3 of block)
+              const box = new THREE.Box3().setFromObject(model);
+              const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+              const scale = 36 / size;
+              model.scale.set(scale, scale, scale);
+              this.rewardModels[name] = model;
+              console.log('Loaded reward model:', name);
+            },
+            undefined,
+            (error) => console.log('Failed to load reward', name, error)
+          );
+        };
+        loadReward('crystal', 'crystal.glb');
+        loadReward('heart', 'heart.glb');
+        loadReward('golden', 'golden.glb');
+
+        this.worldOffset = { x: 0, z: 0 };
+        this.gameState = 'menu';
+        this.jumpDuration = 400;
+        this.lives = 3;
+        this.score = 0;
+        this.coinCount = 0;
+        this.energyCount = 0;
+        this.hasShield = false;
+        this.scaledBottom = 0;
+        this.baseY = this.blockConfig.height - this.scaledBottom + 3.1;
+
+        this.directionMap = {
+          'ArrowUp': { x: 0, z: -1 }, 'ArrowDown': { x: 0, z: 1 },
+          'ArrowLeft': { x: -1, z: 0 }, 'ArrowRight': { x: 1, z: 0 }
+        };
+
+        this.levels = this.createLevels();
+        this.currentLevel = 1;
+
+        // Create procedural models as fallback
+        this.characters = this.createCharacterModels();
+        this.currentCharacterType = 'rabbit';
+        this.player = this.characters.rabbit.clone();
+        this.player.scale.set(12, 12, 12); // 12x scale (2x from previous 6x)
+        // Position procedural rabbit on top of block using cached baseY
+        this.player.position.set(0, this.baseY, 0);
+        this.scene.add(this.player);
+
+        // Try to load the GLB rabbit model
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load(
+          basePath + 'cute_rabbit.glb',
+          (gltf) => {
+            // Success - use loaded model
+            const rabbitModel = gltf.scene;
+
+            // Get bounding box to find model dimensions
+            const box = new THREE.Box3().setFromObject(rabbitModel);
+            const modelHeight = box.max.y - box.min.y;
+            const modelWidth = box.max.x - box.min.x;
+            const modelDepth = box.max.z - box.min.z;
+            const modelCenterX = (box.max.x + box.min.x) / 2;
+            const modelCenterZ = (box.max.z + box.min.z) / 2;
+
+            // Scale to match block size
+            // Block is 54 cube, rabbit should be: height=54 (1x), width/depth=54 (100%)
+            const targetHeight = 18 * 3; // 54
+            const targetWidthDepth = 18; // 100% of block
+            const scaleY = targetHeight / modelHeight;
+            const scaleXZ = targetWidthDepth / Math.max(modelWidth, modelDepth);
+            rabbitModel.scale.set(scaleXZ, scaleY, scaleXZ);
+
+            // Re-calculate box after scaling
+            const scaledBox = new THREE.Box3().setFromObject(rabbitModel);
+            const scaledBottom = scaledBox.min.y;
+            this.scaledBottom = scaledBottom;
+            this.baseY = this.blockConfig.height - scaledBottom + 3.1;
+            const scaledCenterX = (scaledBox.max.x + scaledBox.min.x) / 2;
+            const scaledCenterZ = (scaledBox.max.z + scaledBox.min.z) / 2;
+
+            rabbitModel.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+              }
+            });
+
+            // Replace procedural rabbit with loaded one
+            this.scene.remove(this.player);
+            this.player = rabbitModel.clone();
+
+            // Position so bottom of model sits on block top
+            // Block top is at y = blockConfig.height = 7.2
+            this.player.position.set(0, this.blockConfig.height - scaledBottom + 3.1, 0);
+
+            this.scene.add(this.player);
+            this.characters.rabbit = rabbitModel;
+            console.log('GLB rabbit loaded, scaleY:', scaleY, 'scaleXZ:', scaleXZ, 'bottom:', scaledBottom);
+          },
+          undefined,
+          (error) => {
+            console.log('Using procedural rabbit (GLB load failed):', error);
+            // For procedural rabbit, bottom is at y=0 (feet on ground)
+            this.scaledBottom = 0;
+          }
+        );
+
+        // Store procedural models for other characters
+        const proceduralModels = this.createCharacterModels();
+        this.characters.cat = proceduralModels.cat;
+        this.characters.bear = proceduralModels.bear;
+        this.characters.boy = proceduralModels.boy;
+        this.characters.girl = proceduralModels.girl;
+
+        this.audio = new AudioManager();
+
+        window.addEventListener('resize', () => this.onResize());
+        window.addEventListener('keydown', (e) => this.onKeyDown(e));
+
+        // Cache HUD element references for batch updates - must be before loadLevel()
+        this.hudElements = {
+          lives: document.getElementById('lives'),
+          energy: document.getElementById('energy'),
+          shield: document.getElementById('shield'),
+          score: document.getElementById('score'),
+          coins: document.getElementById('coins'),
+          level: document.getElementById('level')
+        };
+
+        this.loadLevel(1);
+        this.animate();
+      }
+
+      createClouds() {
+        const cloudGeo = new THREE.SphereGeometry(1, 8, 8);
+        const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+
+        for (let i = 0; i < 20; i++) {
+          const cloud = new THREE.Group();
+          const scale = 1.5 + Math.random() * 4.5; // 3x larger (0.5-2 -> 1.5-6)
+          const numSpheres = 2 + Math.floor(Math.random() * 3);
+
+          // Create natural sparse cloud clusters
+          for (let j = 0; j < numSpheres; j++) {
+            const sphere = new THREE.Mesh(cloudGeo, cloudMat);
+            sphere.position.set(
+              j * (1.5 + Math.random() * 2) - numSpheres,
+              Math.random() * 0.6 - 0.3,
+              Math.random() * 1.2 - 0.6
+            );
+            sphere.scale.set(scale, scale * (0.4 + Math.random() * 0.2), scale);
+            cloud.add(sphere);
+          }
+
+          // Spread clouds across a wide area
+          cloud.position.set(
+            -200 + Math.random() * 400, // wide horizontal spread
+            5 + Math.random() * 60,     // vertical spread
+            20 - Math.random() * 180    // depth spread
+          );
+
+          // Slow movement
+          cloud.userData.speed = 0.003 + Math.random() * 0.02;
+          cloud.userData.startX = cloud.position.x;
+          cloud.userData.startZ = cloud.position.z;
+          this.scene.add(cloud);
+          this.clouds.push(cloud);
+        }
+      }
+
+      createCharacterModels() {
+        const models = {};
+
+        // Enhanced cute rabbit - similar to cute_rabbit.glb style
+        const rabbit = new THREE.Group();
+
+        // Body - soft round shape
+        const rabbitBodyGeo = new THREE.SphereGeometry(0.5, 20, 20);
+        const rabbitMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        const rabbitBody = new THREE.Mesh(rabbitBodyGeo, rabbitMat);
+        rabbitBody.position.y = 0.5;
+        rabbitBody.scale.set(1, 1.1, 0.95);
+        rabbitBody.castShadow = true;
+        rabbit.add(rabbitBody);
+
+        // Belly patch - slightly pink
+        const bellyGeo = new THREE.SphereGeometry(0.3, 16, 16);
+        const bellyMat = new THREE.MeshLambertMaterial({ color: 0xFFE4E8 });
+        const belly = new THREE.Mesh(bellyGeo, bellyMat);
+        belly.position.set(0, 0.45, 0.25);
+        belly.scale.set(1, 0.8, 0.5);
+        rabbit.add(belly);
+
+        // Head - bigger relative to body for cuteness
+        const rabbitHeadGeo = new THREE.SphereGeometry(0.42, 20, 20);
+        const rabbitHead = new THREE.Mesh(rabbitHeadGeo, rabbitMat);
+        rabbitHead.position.y = 1.15;
+        rabbitHead.scale.set(1, 0.95, 1);
+        rabbitHead.castShadow = true;
+        rabbit.add(rabbitHead);
+
+        // Eyes - large cute black eyes with highlight
+        const eyeGeo = new THREE.SphereGeometry(0.1, 16, 16);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1A1A1A });
+        const eyeHighlightGeo = new THREE.SphereGeometry(0.03, 8, 8);
+        const eyeHighlightMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+
+        // Left eye
+        const rabbitEyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        rabbitEyeL.position.set(-0.15, 1.2, 0.35);
+        rabbit.add(rabbitEyeL);
+        const eyeHighlightL = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
+        eyeHighlightL.position.set(-0.12, 1.23, 0.42);
+        rabbit.add(eyeHighlightL);
+
+        // Right eye
+        const rabbitEyeR = new THREE.Mesh(eyeGeo, eyeMat);
+        rabbitEyeR.position.set(0.15, 1.2, 0.35);
+        rabbit.add(rabbitEyeR);
+        const eyeHighlightR = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
+        eyeHighlightR.position.set(0.18, 1.23, 0.42);
+        rabbit.add(eyeHighlightR);
+
+        // Cute nose - pink oval
+        const noseGeo = new THREE.SphereGeometry(0.06, 12, 12);
+        noseGeo.scale(1, 0.7, 0.6);
+        const noseMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.position.set(0, 1.08, 0.4);
+        rabbit.add(nose);
+
+        // Mouth - tiny smile lines
+        const mouthGeo = new THREE.BoxGeometry(0.08, 0.02, 0.01);
+        const mouthMat = new THREE.MeshBasicMaterial({ color: 0xFF69B4 });
+        const mouthL = new THREE.Mesh(mouthGeo, mouthMat);
+        mouthL.position.set(-0.04, 1.02, 0.42);
+        mouthL.rotation.z = 0.3;
+        rabbit.add(mouthL);
+        const mouthR = new THREE.Mesh(mouthGeo, mouthMat);
+        mouthR.position.set(0.04, 1.02, 0.42);
+        mouthR.rotation.z = -0.3;
+        rabbit.add(mouthR);
+
+        // Cheeks - pink blush circles
+        const cheekGeo = new THREE.SphereGeometry(0.08, 12, 12);
+        const cheekMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1, transparent: true, opacity: 0.5 });
+        const cheekL = new THREE.Mesh(cheekGeo, cheekMat);
+        cheekL.position.set(-0.28, 1.1, 0.28);
+        cheekL.scale.set(1, 0.6, 0.3);
+        rabbit.add(cheekL);
+        const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
+        cheekR.position.set(0.28, 1.1, 0.28);
+        cheekR.scale.set(1, 0.6, 0.3);
+        rabbit.add(cheekR);
+
+        // Ears - long and cute with inner ear pink
+        const earGeo = new THREE.CapsuleGeometry(0.1, 0.7, 8, 16);
+        const earMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        const earInnerGeo = new THREE.CapsuleGeometry(0.05, 0.5, 8, 16);
+        const earInnerMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+
+        // Left ear
+        const rabbitEarL = new THREE.Mesh(earGeo, earMat);
+        rabbitEarL.position.set(-0.18, 1.75, -0.05);
+        rabbitEarL.rotation.z = -0.15;
+        rabbitEarL.rotation.x = 0.1;
+        rabbitEarL.castShadow = true;
+        rabbit.add(rabbitEarL);
+        const earInnerL = new THREE.Mesh(earInnerGeo, earInnerMat);
+        earInnerL.position.set(-0.18, 1.75, 0.02);
+        earInnerL.rotation.z = -0.15;
+        earInnerL.rotation.x = 0.1;
+        rabbit.add(earInnerL);
+
+        // Right ear
+        const rabbitEarR = new THREE.Mesh(earGeo, earMat);
+        rabbitEarR.position.set(0.18, 1.75, -0.05);
+        rabbitEarR.rotation.z = 0.15;
+        rabbitEarR.rotation.x = 0.1;
+        rabbitEarR.castShadow = true;
+        rabbit.add(rabbitEarR);
+        const earInnerR = new THREE.Mesh(earInnerGeo, earInnerMat);
+        earInnerR.position.set(0.18, 1.75, 0.02);
+        earInnerR.rotation.z = 0.15;
+        earInnerR.rotation.x = 0.1;
+        rabbit.add(earInnerR);
+
+        // Tiny front teeth
+        const toothGeo = new THREE.BoxGeometry(0.06, 0.08, 0.04);
+        const toothMat = new THREE.MeshLambertMaterial({ color: 0xFFFFEE });
+        const toothL = new THREE.Mesh(toothGeo, toothMat);
+        toothL.position.set(-0.03, 0.98, 0.4);
+        rabbit.add(toothL);
+        const toothR = new THREE.Mesh(toothGeo, toothMat);
+        toothR.position.set(0.03, 0.98, 0.4);
+        rabbit.add(toothR);
+
+        // Fluffy tail - small white ball
+        const tailGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        const tail = new THREE.Mesh(tailGeo, rabbitMat);
+        tail.position.set(0, 0.5, -0.45);
+        tail.castShadow = true;
+        rabbit.add(tail);
+
+        // Little front paws
+        const pawGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        const pawL = new THREE.Mesh(pawGeo, rabbitMat);
+        pawL.position.set(-0.25, 0.15, 0.2);
+        pawL.scale.set(1, 0.6, 1.2);
+        pawL.castShadow = true;
+        rabbit.add(pawL);
+        const pawR = new THREE.Mesh(pawGeo, rabbitMat);
+        pawR.position.set(0.25, 0.15, 0.2);
+        pawR.scale.set(1, 0.6, 1.2);
+        pawR.castShadow = true;
+        rabbit.add(pawR);
+
+        // Whiskers
+        const whiskerGeo = new THREE.BoxGeometry(0.15, 0.008, 0.008);
+        const whiskerMat = new THREE.MeshBasicMaterial({ color: 0xCCCCCC });
+        const whiskerPositions = [
+          [-0.3, 1.08, 0.35, 0.1],
+          [-0.32, 1.05, 0.35, 0.08],
+          [-0.28, 1.03, 0.35, 0.12],
+          [0.3, 1.08, 0.35, 0.1],
+          [0.32, 1.05, 0.35, 0.08],
+          [0.28, 1.03, 0.35, 0.12],
+        ];
+        whiskerPositions.forEach(([x, y, z, rot]) => {
+          const w = new THREE.Mesh(whiskerGeo, whiskerMat);
+          w.position.set(x, y, z);
+          w.rotation.y = rot;
+          rabbit.add(w);
+        });
+
+        models.rabbit = rabbit;
+
+        // Cat - with triangular ears
+        const cat = new THREE.Group();
+        const catMat = new THREE.MeshLambertMaterial({ color: 0xFFA500 });
+        const catBody = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), catMat);
+        catBody.position.y = 0.5;
+        catBody.scale.set(1, 1.1, 0.85);
+        catBody.castShadow = true;
+        cat.add(catBody);
+
+        const catHead = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), catMat);
+        catHead.position.y = 1.1;
+        catHead.castShadow = true;
+        cat.add(catHead);
+
+        const catEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat);
+        catEyeL.position.set(-0.14, 1.15, 0.3);
+        cat.add(catEyeL);
+        const catEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat);
+        catEyeR.position.set(0.14, 1.15, 0.3);
+        cat.add(catEyeR);
+
+        // Cat ears
+        const catEarGeo = new THREE.ConeGeometry(0.15, 0.25, 4);
+        const catEarL = new THREE.Mesh(catEarGeo, catMat);
+        catEarL.position.set(-0.2, 1.45, 0);
+        catEarL.rotation.z = -0.2;
+        catEarL.castShadow = true;
+        cat.add(catEarL);
+        const catEarR = new THREE.Mesh(catEarGeo, catMat);
+        catEarR.position.set(0.2, 1.45, 0);
+        catEarR.rotation.z = 0.2;
+        catEarR.castShadow = true;
+        cat.add(catEarR);
+
+        // Bear - round ears
+        const bear = new THREE.Group();
+        const bearMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        const bearBody = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), bearMat);
+        bearBody.position.y = 0.55;
+        bearBody.scale.set(1, 1.15, 0.9);
+        bearBody.castShadow = true;
+        bear.add(bearBody);
+
+        const bearHead = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), bearMat);
+        bearHead.position.y = 1.15;
+        bearHead.castShadow = true;
+        bear.add(bearHead);
+
+        const bearEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        bearEyeL.position.set(-0.13, 1.2, 0.32);
+        bear.add(bearEyeL);
+        const bearEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        bearEyeR.position.set(0.13, 1.2, 0.32);
+        bear.add(bearEyeR);
+
+        // Bear ears
+        const bearEarGeo = new THREE.SphereGeometry(0.12, 8, 8);
+        const bearEarL = new THREE.Mesh(bearEarGeo, bearMat);
+        bearEarL.position.set(-0.28, 1.5, 0.1);
+        bearEarL.castShadow = true;
+        bear.add(bearEarL);
+        const bearEarR = new THREE.Mesh(bearEarGeo, bearMat);
+        bearEarR.position.set(0.28, 1.5, 0.1);
+        bearEarR.castShadow = true;
+        bear.add(bearEarR);
+
+        // Boy
+        const boy = new THREE.Group();
+        const boyMat = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+        const boyBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.8, 16), boyMat);
+        boyBody.position.y = 0.4;
+        boyBody.castShadow = true;
+        boy.add(boyBody);
+
+        const boyHead = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshLambertMaterial({ color: 0xFFDBB4 }));
+        boyHead.position.y = 1;
+        boyHead.castShadow = true;
+        boy.add(boyHead);
+
+        const boyEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
+        boyEyeL.position.set(-0.12, 1.05, 0.28);
+        boy.add(boyEyeL);
+        const boyEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
+        boyEyeR.position.set(0.12, 1.05, 0.28);
+        boy.add(boyEyeR);
+
+        // Girl
+        const girl = new THREE.Group();
+        const girlMat = new THREE.MeshLambertMaterial({ color: 0xFF69B4 });
+        const girlBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.7, 16), girlMat);
+        girlBody.position.y = 0.35;
+        girlBody.castShadow = true;
+        girl.add(girlBody);
+
+        const girlHead = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshLambertMaterial({ color: 0xFFDBB4 }));
+        girlHead.position.y = 0.95;
+        girlHead.castShadow = true;
+        girl.add(girlHead);
+
+        const girlEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        girlEyeL.position.set(-0.12, 1, 0.28);
+        girl.add(girlEyeL);
+        const girlEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+        girlEyeR.position.set(0.12, 1, 0.28);
+        girl.add(girlEyeR);
+
+        // Hair bow
+        const bowGeo = new THREE.SphereGeometry(0.1, 8, 8);
+        const bowMat = new THREE.MeshLambertMaterial({ color: 0xFF1493 });
+        const bow = new THREE.Mesh(bowGeo, bowMat);
+        bow.position.set(0.2, 1.2, 0.15);
+        bow.scale.set(1.5, 0.8, 0.5);
+        girl.add(bow);
+
+        models.rabbit = rabbit;
+        models.cat = cat;
+        models.bear = bear;
+        models.boy = boy;
+        models.girl = girl;
+
+        return models;
+      }
+
+      createLevels() {
+        // Helper to assign rewards randomly (80% of normal blocks get rewards)
+        const assignReward = () => Math.random() < 0.8 ? ['crystal', 'heart', 'golden'][Math.floor(Math.random() * 3)] : null;
+
+        return [
+          { id: 1, name: "起步", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:-2,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:6,z:-4,type:'normal'},
+            {x:8,z:-4,type:'normal',reward:assignReward()},{x:8,z:-2,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:0,type:'normal',reward:assignReward()},{x:12,z:0,type:'normal',reward:assignReward()},{x:14,z:0,type:'end'}
+          ]},
+          { id: 2, name: "左转", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal',reward:assignReward()},{x:6,z:-2,type:'normal'},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},{x:0,z:-4,type:'normal',reward:assignReward()},
+            {x:-2,z:-4,type:'normal'},{x:-4,z:-4,type:'normal',reward:assignReward()},{x:-6,z:-4,type:'end'}
+          ]},
+          { id: 3, name: "右转", blocks: [
+            {x:0,z:0,type:'start'},{x:0,z:-2,type:'normal',reward:assignReward()},{x:0,z:-4,type:'normal',reward:assignReward()},
+            {x:2,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal'},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:8,z:-4,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:10,z:-2,type:'normal',reward:assignReward()},
+            {x:10,z:0,type:'normal'},{x:10,z:2,type:'normal',reward:assignReward()},{x:10,z:4,type:'end'}
+          ]},
+          { id: 4, name: "S形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:12,z:0,type:'normal',reward:assignReward()},{x:12,z:-2,type:'normal',reward:assignReward()},{x:12,z:-4,type:'normal',reward:assignReward()},
+            {x:10,z:-4,type:'normal'},{x:8,z:-4,type:'normal',reward:assignReward()},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal'},{x:0,z:-4,type:'end'}
+          ]},
+          { id: 5, name: "Z形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:-2,type:'normal'},{x:4,z:-4,type:'normal',reward:assignReward()},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:8,z:-4,type:'normal'},{x:10,z:-4,type:'normal',reward:assignReward()},{x:12,z:-4,type:'normal',reward:assignReward()},
+            {x:12,z:-2,type:'normal'},{x:12,z:0,type:'normal',reward:assignReward()},{x:14,z:0,type:'end'}
+          ]},
+          { id: 6, name: "迷宫", blocks: [
+            {x:0,z:0,type:'start'},{x:0,z:-2,type:'normal',reward:assignReward()},{x:0,z:-4,type:'normal',reward:assignReward()},
+            {x:2,z:-4,type:'normal'},{x:4,z:-4,type:'normal',reward:assignReward()},{x:4,z:-2,type:'normal',reward:assignReward()},
+            {x:4,z:0,type:'normal',reward:assignReward()},{x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:8,z:-2,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal'},
+            {x:12,z:-4,type:'normal',reward:assignReward()},{x:12,z:-2,type:'normal',reward:assignReward()},{x:12,z:0,type:'end'}
+          ]},
+          { id: 7, name: "螺旋", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal'},{x:-2,z:-2,type:'normal',reward:assignReward()},
+            {x:-2,z:0,type:'normal',reward:assignReward()},{x:-2,z:2,type:'end'}
+          ]},
+          { id: 8, name: "回形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal'},{x:-4,z:-4,type:'normal',reward:assignReward()},
+            {x:-6,z:-4,type:'end'}
+          ]},
+          { id: 9, name: "左右", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:2,type:'normal'},{x:4,z:4,type:'normal',reward:assignReward()},{x:6,z:4,type:'normal',reward:assignReward()},
+            {x:8,z:4,type:'normal'},{x:8,z:2,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:8,z:-2,type:'normal'},{x:10,z:-2,type:'normal',reward:assignReward()},{x:12,z:-2,type:'end'}
+          ]},
+          { id: 10, name: "蛇形", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:-2,type:'normal'},{x:4,z:-4,type:'normal',reward:assignReward()},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:8,z:-4,type:'normal'},{x:8,z:-2,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:0,type:'normal'},{x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'end'}
+          ]},
+          { id: 11, name: "之字", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:8,z:-2,type:'normal',reward:assignReward()},
+            {x:8,z:-4,type:'normal'},{x:10,z:-4,type:'normal',reward:assignReward()},{x:12,z:-4,type:'normal',reward:assignReward()},
+            {x:12,z:-2,type:'normal'},{x:12,z:0,type:'normal',reward:assignReward()},{x:14,z:0,type:'end'}
+          ]},
+          { id: 12, name: "折返", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'end'}
+          ]},
+          { id: 13, name: "双转", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:2,type:'normal'},{x:4,z:4,type:'normal',reward:assignReward()},{x:6,z:4,type:'normal',reward:assignReward()},
+            {x:8,z:4,type:'normal'},{x:8,z:2,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:8,z:-2,type:'normal'},{x:6,z:-2,type:'normal',reward:assignReward()},{x:4,z:-2,type:'end'}
+          ]},
+          { id: 14, name: "环绕", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal'},{x:-4,z:-4,type:'normal',reward:assignReward()},
+            {x:-6,z:-4,type:'end'}
+          ]},
+          { id: 15, name: "交叉", blocks: [
+            {x:0,z:0,type:'start'},{x:0,z:2,type:'normal',reward:assignReward()},{x:0,z:4,type:'normal',reward:assignReward()},
+            {x:2,z:4,type:'normal'},{x:4,z:4,type:'normal',reward:assignReward()},{x:4,z:2,type:'normal',reward:assignReward()},
+            {x:4,z:0,type:'normal'},{x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:8,z:-2,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal',reward:assignReward()},{x:10,z:-4,type:'end'}
+          ]},
+          { id: 16, name: "跳跃", blocks: [
+            {x:0,z:0,type:'start'},{x:0,z:-2,type:'normal',reward:assignReward()},{x:0,z:-4,type:'normal',reward:assignReward()},
+            {x:2,z:-4,type:'normal'},{x:4,z:-4,type:'normal',reward:assignReward()},{x:4,z:-2,type:'normal',reward:assignReward()},
+            {x:4,z:0,type:'normal'},{x:6,z:0,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal',reward:assignReward()},
+            {x:8,z:2,type:'normal'},{x:6,z:2,type:'normal',reward:assignReward()},{x:4,z:2,type:'end'}
+          ]},
+          { id: 17, name: "三角", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:6,z:-2,type:'normal',reward:assignReward()},{x:6,z:-4,type:'normal',reward:assignReward()},
+            {x:4,z:-4,type:'normal'},{x:2,z:-4,type:'normal',reward:assignReward()},{x:0,z:-4,type:'normal'},
+            {x:-2,z:-4,type:'normal',reward:assignReward()},{x:-2,z:-2,type:'normal',reward:assignReward()},{x:-2,z:0,type:'end'}
+          ]},
+          { id: 18, name: "阶梯", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:4,z:2,type:'normal'},{x:4,z:4,type:'normal',reward:assignReward()},{x:6,z:4,type:'normal'},{x:8,z:4,type:'normal',reward:assignReward()},
+            {x:8,z:2,type:'normal',reward:assignReward()},{x:8,z:0,type:'normal'},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'end'}
+          ]},
+          { id: 19, name: "环绕2", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},
+            {x:0,z:-4,type:'normal'},{x:-2,z:-4,type:'normal'},{x:-2,z:-2,type:'normal',reward:assignReward()},
+            {x:-2,z:0,type:'end'}
+          ]},
+          { id: 20, name: "终极", blocks: [
+            {x:0,z:0,type:'start'},{x:2,z:0,type:'normal',reward:assignReward()},{x:4,z:0,type:'normal',reward:assignReward()},
+            {x:6,z:0,type:'normal'},{x:8,z:0,type:'normal',reward:assignReward()},{x:10,z:0,type:'normal',reward:assignReward()},
+            {x:10,z:-2,type:'normal',reward:assignReward()},{x:10,z:-4,type:'normal',reward:assignReward()},{x:8,z:-4,type:'normal'},
+            {x:6,z:-4,type:'normal',reward:assignReward()},{x:4,z:-4,type:'normal',reward:assignReward()},{x:2,z:-4,type:'normal',reward:assignReward()},
+            {x:0,z:-4,type:'normal'},{x:0,z:-6,type:'normal'},{x:2,z:-6,type:'normal',reward:assignReward()},
+            {x:4,z:-6,type:'normal',reward:assignReward()},{x:6,z:-6,type:'normal',reward:assignReward()},{x:8,z:-6,type:'end'}
+          ]}
+        ];
+      }
+
+      start() {
+        document.getElementById('message').style.display = 'none';
+        document.getElementById('hud').classList.add('visible');
+        this.gameState = 'waiting';
+        this.loadLevel(1);
+      }
+
+      createBlock(x, z, type = 'normal', reward = null) {
+        const group = new THREE.Group();
+        group.userData = { type, reward, x, z, originalX: x * this.blockConfig.width, originalZ: z * this.blockConfig.depth };
+
+        const geo = new THREE.BoxGeometry(this.blockConfig.width, this.blockConfig.height, this.blockConfig.depth);
+
+        // Assign material based on block type
+        // For normal blocks: opaque materials can be shared, transparent need cloning
+        let mat;
+        if (type === 'normal') {
+          const matName = this.blockMaterialNames[Math.floor(Math.random() * this.blockMaterialNames.length)];
+          const baseMat = this.blockMaterials[matName];
+          // Clone transparent materials since they have unique opacity/clearcoat
+          if (['crystal', 'gold', 'rose'].includes(matName)) {
+            mat = baseMat.clone();
+          } else {
+            mat = baseMat; // Opaque materials safe to share
+          }
+        } else {
+          mat = this.blockMaterials[type];
+        }
+
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+
+        // Floating animation data
+        group.userData.floatOffset = Math.random() * Math.PI * 2;
+        group.userData.baseY = 0;
+
+        if (type === 'start' || type === 'end') {
+          const edges = new THREE.EdgesGeometry(geo);
+          const edgeMat = new THREE.LineBasicMaterial({ color: type === 'start' ? 0x00FF00 : 0xFF0000 });
+          group.add(new THREE.LineSegments(edges, edgeMat));
+
+          if (type === 'end') {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, 36, 8), new THREE.MeshLambertMaterial({ color: 0x8B4513 }));
+            pole.position.set(0, 18, 0);
+            pole.castShadow = true;
+            group.add(pole);
+
+            const flag = new THREE.Mesh(new THREE.PlaneGeometry(10.8, 6.75), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
+            flag.position.set(5.4, 26.5, 0);
+            flag.rotation.y = Math.PI / 2;
+            group.add(flag);
+          }
+        }
+
+        if (reward && this.rewardModels[reward]) {
+          const rewardMesh = this.rewardModels[reward].clone();
+          // Position: block top + rewardFloatDist above block top
+          // Block is at y=0 with height 7.2, so top is at y=7.2
+          // Reward floats at block top + 4.5 = 8.1 above block base
+          rewardMesh.position.y = this.blockConfig.height + this.rewardFloatDist;
+          rewardMesh.userData.isReward = true;
+          rewardMesh.userData.floatOffset = Math.random() * Math.PI * 2;
+          group.add(rewardMesh);
+        }
+
+        group.position.set(x * this.blockConfig.width, 0, z * this.blockConfig.depth);
+        return group;
+      }
+
+      loadLevel(levelId) {
+        const level = this.levels.find(l => l.id === levelId);
+        if (!level) return;
+
+        // Dispose Three.js resources before removing blocks to prevent memory leaks
+        this.blocks.forEach(b => {
+          b.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          });
+          this.scene.remove(b);
+        });
+        this.blocks = [];
+
+        level.blocks.forEach(b => {
+          const block = this.createBlock(b.x, b.z, b.type, b.reward);
+          this.blocks.push(block);
+          this.scene.add(block);
+        });
+
+        this.currentLevel = levelId;
+        this.player.position.set(0, this.baseY, 0);
+        this.worldOffset = { x: 0, z: 0 };
+        this.gameState = 'waiting';
+        this.updateHUD();
+      }
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      onKeyDown(e) {
+        if (this.gameState === 'menu') return;
+        if (this.gameState !== 'waiting') return;
+
+        if (!this.audio.ctx) this.audio.init();
+
+        const dir = this.directionMap[e.key];
+        if (dir) {
+          e.preventDefault();
+          this.startJump(dir);
+        }
+      }
+
+      startJump(dir) {
+        this.gameState = 'jumping';
+        this.audio.playSound('jump');
+
+        const startTime = performance.now();
+        const worldMoveX = -dir.x * this.blockConfig.width * 2; // Jump 2 blocks
+        const worldMoveZ = -dir.z * this.blockConfig.depth * 2;
+
+        const animate = (now) => {
+          const t = Math.min((now - startTime) / this.jumpDuration, 1);
+          const arc = Math.sin(t * Math.PI);
+
+          // Keep player centered on screen, only animate Y (arc)
+          this.player.position.x = 0;
+          this.player.position.z = 0;
+          this.player.position.y = this.baseY + arc * 6.8;
+
+          // Move world gradually during animation
+          const currentMoveX = worldMoveX * t;
+          const currentMoveZ = worldMoveZ * t;
+          this.blocks.forEach(b => {
+            b.position.x = b.userData.originalX + currentMoveX;
+            b.position.z = b.userData.originalZ + currentMoveZ;
+          });
+
+          // Move clouds too
+          this.scene.children.forEach(c => {
+            if (c.userData.speed) {
+              c.position.x = c.userData.startX + currentMoveX;
+              c.position.z = c.userData.startZ + currentMoveZ;
+            }
+          });
+
+          // Face direction of movement
+          if (dir.x !== 0 || dir.z !== 0) {
+            this.player.rotation.y = Math.atan2(dir.x, dir.z);
+          }
+
+          if (t < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            // Final position update
+            this.worldOffset.x += worldMoveX;
+            this.worldOffset.z += worldMoveZ;
+
+            // Update original positions for next jump
+            this.blocks.forEach(b => {
+              b.userData.originalX = b.position.x;
+              b.userData.originalZ = b.position.z;
+            });
+
+            // Reset player position - use cached base Y
+            this.player.position.set(0, this.baseY, 0);
+            this.onLand();
+          }
+        };
+        requestAnimationFrame(animate);
+      }
+
+      onLand() {
+        // Check if player landed on a block based on world positions
+        const playerWorldX = this.worldOffset.x;
+        const playerWorldZ = this.worldOffset.z;
+        let onBlock = null;
+
+        for (const b of this.blocks) {
+          const blockWorldX = b.position.x + this.worldOffset.x;
+          const blockWorldZ = b.position.z + this.worldOffset.z;
+          const dx = blockWorldX - playerWorldX;
+          const dz = blockWorldZ - playerWorldZ;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < 2.0) { // Increased threshold to allow landing on adjacent blocks
+            onBlock = b;
+            break;
+          }
+        }
+
+        if (onBlock) {
+          if (onBlock.userData.reward) {
+            this.collectReward(onBlock);
+          }
+          if (onBlock.userData.type === 'end') {
+            this.onVictory();
+          } else {
+            this.gameState = 'waiting';
+          }
+        } else {
+          this.onFall();
+        }
+      }
+
+      checkBlockAt(x, z) {
+        for (const b of this.blocks) {
+          if (Math.abs(b.position.x - x) < 0.8 && Math.abs(b.position.z - z) < 0.8) {
+            return b;
+          }
+        }
+        return null;
+      }
+
+      collectReward(block) {
+        const reward = block.userData.reward;
+        block.children.forEach(c => {
+          if (c.userData.isReward) {
+            this.audio.playSound(reward);
+            if (reward === 'coin') { this.coinCount++; this.score += 100; }
+            else if (reward === 'energy') {
+              this.energyCount++;
+              if (this.energyCount >= 5) { this.energyCount = 0; this.hasShield = true; }
+            } else if (reward === 'heart') {
+              this.lives = Math.min(this.lives + 1, 5);
+            } else if (reward === 'crystal') {
+              this.energyCount++;
+              if (this.energyCount >= 5) { this.energyCount = 0; this.hasShield = true; }
+            } else if (reward === 'golden') {
+              this.coinCount++; this.score += 100;
+            }
+            c.visible = false;
+          }
+        });
+        this.updateHUD();
+      }
+
+      onVictory() {
+        this.audio.playSound('victory');
+        this.gameState = 'victory';
+
+        // Visual celebration - flash screen and confetti burst
+        this.flashScreen();
+        this.createConfetti();
+
+        // Show custom victory dialog
+        this.showVictoryDialog();
+      }
+
+      showVictoryDialog() {
+        const overlay = document.createElement('div');
+        overlay.id = 'victory-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:300;display:flex;justify-content:center;align-items:center;';
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'background:white;padding:80px 150px;border-radius:40px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
+
+        const title = document.createElement('h2');
+        title.textContent = '🎉 过关！';
+        title.style.cssText = 'font-size:6em;margin:0 0 40px 0;color:#333;';
+
+        const score = document.createElement('p');
+        score.textContent = `得分: ${this.score}`;
+        score.style.cssText = 'font-size:3.5em;margin:0 0 30px 0;';
+
+        const rewards = document.createElement('p');
+        rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  💰×${this.coinCount}  ⭐${this.score}`;
+        rewards.style.cssText = 'font-size:2.5em;margin:0 0 50px 0;color:#666;';
+
+        const btn = document.createElement('button');
+        btn.textContent = this.currentLevel < 20 ? '进入下一关 →' : '重新开始';
+        btn.style.cssText = 'padding:30px 80px;font-size:2.5em;border:none;border-radius:20px;background:#7EC8E3;color:white;cursor:pointer;';
+        btn.onclick = () => {
+          document.body.removeChild(overlay);
+          if (this.currentLevel < 20) {
+            this.loadLevel(this.currentLevel + 1);
+          } else {
+            this.loadLevel(1);
+          }
+        };
+
+        dialog.appendChild(title);
+        dialog.appendChild(score);
+        dialog.appendChild(rewards);
+        dialog.appendChild(btn);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+      }
+
+      flashScreen() {
+        const flash = document.createElement('div');
+        flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#FFD700;opacity:0.8;z-index:200;pointer-events:none;';
+        document.body.appendChild(flash);
+        let opacity = 0.8;
+        const fade = () => {
+          opacity -= 0.05;
+          flash.style.opacity = opacity;
+          if (opacity > 0) requestAnimationFrame(fade);
+          else document.body.removeChild(flash);
+        };
+        setTimeout(fade, 50);
+      }
+
+      createConfetti() {
+        const colors = ['#FF0000', '#00FF00', '#FFD700', '#FF69B4', '#00FFFF', '#FFA500'];
+        const centerX = window.innerWidth / 2;
+
+        // Create confetti data for single RAF loop
+        const confettiData = [];
+        for (let i = 0; i < 50; i++) {
+          const conf = document.createElement('div');
+          const startX = centerX + (Math.random() - 0.5) * 400;
+          const duration = 1000 + Math.random() * 1000;
+          const targetX = (Math.random() - 0.5) * 300;
+          const targetY = window.innerHeight + 50;
+          const delay = Math.random() * 300;
+
+          conf.style.cssText = `position:fixed;width:10px;height:10px;background:${colors[i % colors.length]};left:${startX}px;top:-20px;z-index:199;border-radius:50%;pointer-events:none;`;
+          document.body.appendChild(conf);
+          confettiData.push({ el: conf, startX, targetX, targetY, duration, delay, startTime: null });
+        }
+
+        // Single RAF loop for all confetti
+        const animate = (now) => {
+          let active = false;
+          for (const c of confettiData) {
+            if (!c.startTime) c.startTime = now + c.delay;
+            const t = (now - c.startTime) / c.duration;
+            if (t < 1 && t >= 0) {
+              active = true;
+              c.el.style.left = `${c.startX + c.targetX * t}px`;
+              c.el.style.top = `${-20 + c.targetY * t}px`;
+              c.el.style.transform = `rotate(${t * 720}deg)`;
+            } else if (t >= 1 && c.el.parentNode) {
+              document.body.removeChild(c.el);
+            }
+          }
+          if (active) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+      }
+
+      onFall() {
+        if (this.hasShield) {
+          this.hasShield = false;
+          this.audio.playSound('jump');
+          this.gameState = 'waiting';
+          return;
+        }
+
+        this.audio.playSound('death');
+        this.lives--;
+        this.updateHUD();
+
+        if (this.lives <= 0) {
+          this.gameState = 'gameover';
+          setTimeout(() => {
+            if (confirm('💀 游戏结束！是否重新开始？')) {
+              this.lives = 3;
+              this.score = 0;
+              this.energyCount = 0;
+              this.loadLevel(1);
+            }
+          }, 500);
+        } else {
+          this.player.position.set(0, baseY, 0);
+          this.worldOffset = { x: 0, z: 0 };
+          this.gameState = 'waiting';
+        }
+      }
+
+      updateHUD() {
+        const h = this.hudElements;
+        h.lives.textContent = `❤️×${this.lives}`;
+        h.energy.textContent = `💎×${this.energyCount}/5`;
+        h.shield.textContent = `⚡️×${this.hasShield ? 1 : 0}`;
+        h.score.textContent = `⭐×${this.score}`;
+        h.coins.textContent = `💰×${this.coinCount || 0}`;
+        h.level.textContent = `关卡 ${this.currentLevel}`;
+      }
+
+      animate() {
+        requestAnimationFrame(() => this.animate());
+
+        // Animate clouds - each moves at its own speed and direction
+        this.clouds.forEach(c => {
+          c.position.x += c.userData.speed;
+          // Reset cloud when it goes off the right side, start from left
+          if (c.position.x > 150) c.position.x = -150;
+        });
+
+        // Animate blocks floating (more visible floating)
+        const time = performance.now() * 0.001;
+        this.blocks.forEach(b => {
+          b.position.y = Math.sin(time * 4.5 + b.userData.floatOffset) * 1.2;
+          b.children.forEach(c => {
+            if (c.userData.isReward) {
+              c.rotation.y += 0.02;
+              // Animate reward floating above block - use base position + float offset
+              // base position was set to blockConfig.height + rewardFloatDist = 4.5
+              c.position.y = this.blockConfig.height + this.rewardFloatDist + Math.sin(time * 9 + c.userData.floatOffset) * 0.9;
+            }
+          });
+        });
+
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    window.game = new Game();
+  </script>
+</body>
+</html>

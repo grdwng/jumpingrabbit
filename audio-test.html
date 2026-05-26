@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 40px; background: #1a1a1a; color: white; }
+    .btn { padding: 15px 30px; margin: 10px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; }
+    .crystal { background: #00cccc; }
+    .heart { background: #ff4081; color: white; }
+    .golden { background: #ffd700; }
+  </style>
+</head>
+<body>
+  <h1>音效测试</h1>
+  <button class="btn crystal" onclick="playSound('crystal')">🔮 Crystal - 清脆风铃</button>
+  <button class="btn heart" onclick="playSound('heart')">❤️ Heart - 柔和低鸣</button>
+  <button class="btn golden" onclick="playSound('golden')">🌟 Golden - 胜利号角</button>
+
+  <script>
+    let ctx = null;
+    function init() {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    function playSound(type) {
+      if (!ctx) init();
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      switch (type) {
+        case 'crystal':
+          osc.frequency.value = 880; osc.type = 'sine';
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+          osc.start(); osc.stop(ctx.currentTime + 0.5);
+          [1320, 1760].forEach((freq, i) => {
+            setTimeout(() => {
+              const osc2 = ctx.createOscillator();
+              const gain2 = ctx.createGain();
+              osc2.connect(gain2); gain2.connect(ctx.destination);
+              osc2.frequency.value = freq; osc2.type = 'sine';
+              gain2.gain.setValueAtTime(0.12, ctx.currentTime);
+              gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+              osc2.start(); osc2.stop(ctx.currentTime + 0.3);
+            }, (i + 1) * 60);
+          }); break;
+        case 'heart':
+          osc.frequency.value = 250; osc.type = 'sine';
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+          osc.start(); osc.stop(ctx.currentTime + 0.2);
+          setTimeout(() => {
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.connect(gain2); gain2.connect(ctx.destination);
+            osc2.frequency.value = 200; osc2.type = 'sine';
+            gain2.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc2.start(); osc2.stop(ctx.currentTime + 0.15);
+          }, 80); break;
+        case 'golden':
+          [392, 494, 587, 784].forEach((freq, i) => {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.frequency.value = freq; o.type = 'triangle';
+            g.gain.setValueAtTime(0.18, ctx.currentTime + i * 0.1);
+            g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.4);
+            o.start(ctx.currentTime + i * 0.1);
+            o.stop(ctx.currentTime + i * 0.1 + 0.4);
+          }); break;
+      }
+    }
+  </script>
+</body>
+</html>
