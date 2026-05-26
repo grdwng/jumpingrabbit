@@ -1276,8 +1276,25 @@
       onFall() {
         if (this.shieldCount > 0) {
           this.shieldCount--;
-          this.audio.playSound('jump');
-          this.loadLevel(this.currentLevel);
+          this.updateHUD();
+          // Play sound asynchronously to avoid blocking
+          setTimeout(() => {
+            try {
+              this.audio.playSound('jump');
+            } catch (e) {
+              console.warn('Audio playSound error:', e);
+            }
+          }, 0);
+          // Reset world offset before loadLevel to ensure clean state
+          this.worldOffset = { x: 0, z: 0 };
+          try {
+            this.loadLevel(this.currentLevel);
+          } catch (e) {
+            console.error('loadLevel error:', e);
+            // Reset state even on error to prevent freeze
+            this.gameState = 'waiting';
+            this.player.position.set(0, this.baseY, 0);
+          }
           return;
         }
 
@@ -1290,8 +1307,9 @@
           setTimeout(() => {
             if (confirm('💀 游戏结束！是否重新开始？')) {
               this.lives = 3;
-              this.score = 0;
-              this.totalScore = 0;
+              this.levelScore = 0;
+              this.accumulatedPoints = 0;
+              this.coinCount = 0;
               this.energyCount = 0;
               this.loadLevel(1);
             }
