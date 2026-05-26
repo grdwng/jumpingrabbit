@@ -2,7 +2,7 @@
   "name": "jumping-rabbit",
   "version": "1.0.0",
   "description": "Jumping Rabbit - 3D Jump Game",
-  "main": "main.js",
+  "main": "scripts/main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
