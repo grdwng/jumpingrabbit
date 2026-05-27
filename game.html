@@ -285,55 +285,37 @@
           topaz: new THREE.MeshLambertMaterial({
             color: 0xFFDD66, emissive: 0x443300, emissiveIntensity: 0.3
           }),
-          // Start/end block materials
           start: new THREE.MeshLambertMaterial({ color: 0x98D9A4, emissive: 0x003300 }),
           end: new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x443300 })
         };
-        // Base materials for start/end blocks
-        // normal is assigned dynamically per block in createBlock()
-
         // Material names for random selection (shared, safe for opaque)
-        this.blockMaterialNames = ['crystal', 'ruby', 'emerald', 'amethyst', 'gold', 'sapphire', 'rose', 'topaz'];
+        this.blockMaterialNames = ['ruby', 'emerald', 'amethyst', 'sapphire', 'topaz'];
 
         // Reward models loaded from GLB files (80% of blocks have rewards)
         // Load reward GLB models (use local path for packaged app)
-        const isElectron = typeof window.require !== 'undefined';
-        const resourcesPath = isElectron && typeof process !== 'undefined' ? process.resourcesPath : '';
-        const basePath = isElectron ? resourcesPath + '/assets/' : './assets/';
+        // Note: process.resourcesPath may be undefined in sandboxed renderer
+        // In that case we try to detect via other means or fall back
+        let basePath = './assets/';
+        if (typeof window.electronAPI !== 'undefined' && window.electronAPI.assetsBaseUrl) {
+          basePath = window.electronAPI.assetsBaseUrl;
+        }
+        this.basePath = basePath;  // Store for use in loadAllRewardModels
         this.rewardModels = {};
-        this.rewardFloatDist = this.blockConfig.width / 2; // 27
-
-        // Load reward GLB models
-        const rewardLoader = new GLTFLoader();
-        const loadReward = (name, path) => {
-          rewardLoader.load(
-            basePath + path,
-            (gltf) => {
-              const model = gltf.scene;
-              // Scale to fit on block: block is 54 wide, reward should be ~36 (2/3 of block)
-              const box = new THREE.Box3().setFromObject(model);
-              const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
-              const scale = 36 / size;
-              model.scale.set(scale, scale, scale);
-              this.rewardModels[name] = model;
-              console.log('Loaded reward model:', name);
-            },
-            undefined,
-            (error) => console.log('Failed to load reward', name, error)
-          );
-        };
-        loadReward('crystal', 'crystal.glb');
-        loadReward('heart', 'heart.glb');
-        loadReward('golden', 'golden.glb');
+        this.modelsLoaded = false;
+        this.modelsLoadingPromise = null;
+        this.rewardFloatDist = 20; // floating height above block top (increased from 6)
 
         this.worldOffset = { x: 0, z: 0 };
         this.gameState = 'menu';
         this.jumpDuration = 400;
         this.lives = 3;
         this.score = 0;
+        this.totalScore = 0;
         this.coinCount = 0;
         this.energyCount = 0;
-        this.hasShield = false;
+        this.shieldCount = 0;
+        this.levelScore = 0;           // 本关得分 (level completion bonus)
+        this.accumulatedPoints = 0;    // 累计积分 (coins × 20 only, no level bonus)
         this.scaledBottom = 0;
         this.baseY = this.blockConfig.height - this.scaledBottom + 3.1;
 
@@ -349,7 +331,7 @@
         this.characters = this.createCharacterModels();
         this.currentCharacterType = 'rabbit';
         this.player = this.characters.rabbit.clone();
-        this.player.scale.set(12, 12, 12); // 12x scale (2x from previous 6x)
+        this.player.scale.set(18, 18, 18); // 18x scale (50% of 36x)
         // Position procedural rabbit on top of block using cached baseY
         this.player.position.set(0, this.baseY, 0);
         this.scene.add(this.player);
@@ -376,7 +358,8 @@
             const targetWidthDepth = 18; // 100% of block
             const scaleY = targetHeight / modelHeight;
             const scaleXZ = targetWidthDepth / Math.max(modelWidth, modelDepth);
-            rabbitModel.scale.set(scaleXZ, scaleY, scaleXZ);
+            // Increase thickness (Z-axis) by 20% to make rabbit less flat
+            rabbitModel.scale.set(scaleXZ, scaleY, scaleXZ * 1.2);
 
             // Re-calculate box after scaling
             const scaledBox = new THREE.Box3().setFromObject(rabbitModel);
@@ -436,6 +419,52 @@
 
         this.loadLevel(1);
         this.animate();
+
+        // Start preloading reward models
+        this.modelsLoadingPromise = this.loadAllRewardModels();
+      }
+
+      // Promise-based reward model preloader
+      loadAllRewardModels() {
+        return new Promise((resolve) => {
+          const loader = new GLTFLoader();
+          const models = ['crystal', 'heart', 'golden'];
+          let loadedCount = 0;
+
+          models.forEach((name) => {
+            loader.load(
+              this.basePath + name + '.glb',
+              (gltf) => {
+                const model = gltf.scene;
+                const box = new THREE.Box3().setFromObject(model);
+                const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+                // Scale reward models to same size as rabbit (18x scale)
+                let scale = 36 / size;
+                // Scale heart and golden to 80% of crystal size
+                if (name === 'heart' || name === 'golden') {
+                  scale *= 0.8;
+                }
+                model.scale.set(scale, scale, scale);
+                this.rewardModels[name] = model;
+                loadedCount++;
+                console.log('Loaded reward model:', name, '(' + loadedCount + '/' + models.length + ')');
+                if (loadedCount === models.length) {
+                  this.modelsLoaded = true;
+                  resolve();
+                }
+              },
+              undefined,
+              (error) => {
+                console.log('Failed to load reward', name, error);
+                loadedCount++; // Count as loaded even on failure to avoid hanging
+                if (loadedCount === models.length) {
+                  this.modelsLoaded = true;
+                  resolve();
+                }
+              }
+            );
+          });
+        });
       }
 
       createClouds() {
@@ -906,6 +935,13 @@
       }
 
       start() {
+        if (!this.modelsLoaded) {
+          // If still loading, wait for it to complete then start
+          this.modelsLoadingPromise.then(() => {
+            this.start();
+          });
+          return;
+        }
         document.getElementById('message').style.display = 'none';
         document.getElementById('hud').classList.add('visible');
         this.gameState = 'waiting';
@@ -949,13 +985,18 @@
           group.add(new THREE.LineSegments(edges, edgeMat));
 
           if (type === 'end') {
-            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, 36, 8), new THREE.MeshLambertMaterial({ color: 0x8B4513 }));
-            pole.position.set(0, 18, 0);
+            const poleHeight = 36;
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, poleHeight, 8), new THREE.MeshLambertMaterial({ color: 0x8B4513 }));
+            pole.position.set(0, poleHeight / 2, 0);
             pole.castShadow = true;
             group.add(pole);
 
-            const flag = new THREE.Mesh(new THREE.PlaneGeometry(10.8, 6.75), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
-            flag.position.set(5.4, 26.5, 0);
+            // Scale flag 3x larger
+            const flagWidth = 10.8 * 3;
+            const flagHeight = 6.75 * 3;
+            const flag = new THREE.Mesh(new THREE.PlaneGeometry(flagWidth, flagHeight), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
+            // Position flag on top of pole: x = pole radius + half flag width, y = pole top + half flag height
+            flag.position.set(0.9 + flagWidth / 2, poleHeight + flagHeight / 2, 0);
             flag.rotation.y = Math.PI / 2;
             group.add(flag);
           }
@@ -963,9 +1004,7 @@
 
         if (reward && this.rewardModels[reward]) {
           const rewardMesh = this.rewardModels[reward].clone();
-          // Position: block top + rewardFloatDist above block top
-          // Block is at y=0 with height 7.2, so top is at y=7.2
-          // Reward floats at block top + 4.5 = 8.1 above block base
+          // Position reward high above block top
           rewardMesh.position.y = this.blockConfig.height + this.rewardFloatDist;
           rewardMesh.userData.isReward = true;
           rewardMesh.userData.floatOffset = Math.random() * Math.PI * 2;
@@ -1133,17 +1172,17 @@
         block.children.forEach(c => {
           if (c.userData.isReward) {
             this.audio.playSound(reward);
-            if (reward === 'coin') { this.coinCount++; this.score += 100; }
+            if (reward === 'coin') { this.coinCount++; this.score += 20; }
             else if (reward === 'energy') {
               this.energyCount++;
-              if (this.energyCount >= 5) { this.energyCount = 0; this.hasShield = true; }
+              if (this.energyCount >= 5) { this.energyCount = 0; this.shieldCount++; }
             } else if (reward === 'heart') {
               this.lives = Math.min(this.lives + 1, 5);
             } else if (reward === 'crystal') {
               this.energyCount++;
-              if (this.energyCount >= 5) { this.energyCount = 0; this.hasShield = true; }
+              if (this.energyCount >= 5) { this.energyCount = 0; this.shieldCount++; }
             } else if (reward === 'golden') {
-              this.coinCount++; this.score += 100;
+              this.coinCount++; this.score += 20;
             }
             c.visible = false;
           }
@@ -1154,6 +1193,11 @@
       onVictory() {
         this.audio.playSound('victory');
         this.gameState = 'victory';
+        // Level score: always 100 for level completion
+        this.levelScore = 100;
+        // Accumulated points: only coins × 20 (no level bonus double-counting)
+        this.accumulatedPoints += this.coinCount * 20;
+        this.updateHUD();
 
         // Visual celebration - flash screen and confetti burst
         this.flashScreen();
@@ -1169,23 +1213,27 @@
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:300;display:flex;justify-content:center;align-items:center;';
 
         const dialog = document.createElement('div');
-        dialog.style.cssText = 'background:white;padding:80px 150px;border-radius:40px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
+        dialog.style.cssText = 'background:white;padding:40px 75px;border-radius:20px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
 
         const title = document.createElement('h2');
         title.textContent = '🎉 过关！';
-        title.style.cssText = 'font-size:6em;margin:0 0 40px 0;color:#333;';
+        title.style.cssText = 'font-size:3em;margin:0 0 20px 0;color:#333;';
 
         const score = document.createElement('p');
-        score.textContent = `得分: ${this.score}`;
-        score.style.cssText = 'font-size:3.5em;margin:0 0 30px 0;';
+        score.textContent = `本关得分: ⭐×${this.levelScore}`;
+        score.style.cssText = 'font-size:1.75em;margin:0 0 15px 0;';
+
+        const accumulatedPoints = document.createElement('p');
+        accumulatedPoints.textContent = `累计积分: ⭐×${this.accumulatedPoints}`;
+        accumulatedPoints.style.cssText = 'font-size:1.25em;margin:0 0 15px 0;color:#666;';
 
         const rewards = document.createElement('p');
-        rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  💰×${this.coinCount}  ⭐${this.score}`;
-        rewards.style.cssText = 'font-size:2.5em;margin:0 0 50px 0;color:#666;';
+        rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  ⚡️×${this.shieldCount}  💰×${this.coinCount}`;
+        rewards.style.cssText = 'font-size:1.25em;margin:0 0 25px 0;color:#666;';
 
         const btn = document.createElement('button');
         btn.textContent = this.currentLevel < 20 ? '进入下一关 →' : '重新开始';
-        btn.style.cssText = 'padding:30px 80px;font-size:2.5em;border:none;border-radius:20px;background:#7EC8E3;color:white;cursor:pointer;';
+        btn.style.cssText = 'padding:15px 40px;font-size:1.25em;border:none;border-radius:10px;background:#7EC8E3;color:white;cursor:pointer;';
         btn.onclick = () => {
           document.body.removeChild(overlay);
           if (this.currentLevel < 20) {
@@ -1197,6 +1245,7 @@
 
         dialog.appendChild(title);
         dialog.appendChild(score);
+        dialog.appendChild(accumulatedPoints);
         dialog.appendChild(rewards);
         dialog.appendChild(btn);
         overlay.appendChild(dialog);
@@ -1257,10 +1306,27 @@
       }
 
       onFall() {
-        if (this.hasShield) {
-          this.hasShield = false;
-          this.audio.playSound('jump');
-          this.gameState = 'waiting';
+        if (this.shieldCount > 0) {
+          this.shieldCount--;
+          this.updateHUD();
+          // Play sound asynchronously to avoid blocking
+          setTimeout(() => {
+            try {
+              this.audio.playSound('jump');
+            } catch (e) {
+              console.warn('Audio playSound error:', e);
+            }
+          }, 0);
+          // Reset world offset before loadLevel to ensure clean state
+          this.worldOffset = { x: 0, z: 0 };
+          try {
+            this.loadLevel(this.currentLevel);
+          } catch (e) {
+            console.error('loadLevel error:', e);
+            // Reset state even on error to prevent freeze
+            this.gameState = 'waiting';
+            this.player.position.set(0, this.baseY, 0);
+          }
           return;
         }
 
@@ -1273,15 +1339,15 @@
           setTimeout(() => {
             if (confirm('💀 游戏结束！是否重新开始？')) {
               this.lives = 3;
-              this.score = 0;
+              this.levelScore = 0;
+              this.accumulatedPoints = 0;
+              this.coinCount = 0;
               this.energyCount = 0;
               this.loadLevel(1);
             }
           }, 500);
         } else {
-          this.player.position.set(0, baseY, 0);
-          this.worldOffset = { x: 0, z: 0 };
-          this.gameState = 'waiting';
+          this.loadLevel(this.currentLevel);
         }
       }
 
@@ -1289,8 +1355,8 @@
         const h = this.hudElements;
         h.lives.textContent = `❤️×${this.lives}`;
         h.energy.textContent = `💎×${this.energyCount}/5`;
-        h.shield.textContent = `⚡️×${this.hasShield ? 1 : 0}`;
-        h.score.textContent = `⭐×${this.score}`;
+        h.shield.textContent = `⚡️×${this.shieldCount}`;
+        h.score.textContent = `⭐×${this.accumulatedPoints}`;
         h.coins.textContent = `💰×${this.coinCount || 0}`;
         h.level.textContent = `关卡 ${this.currentLevel}`;
       }

@@ -285,30 +285,24 @@
           topaz: new THREE.MeshLambertMaterial({
             color: 0xFFDD66, emissive: 0x443300, emissiveIntensity: 0.3
           }),
-          // Start/end block materials
           start: new THREE.MeshLambertMaterial({ color: 0x98D9A4, emissive: 0x003300 }),
           end: new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x443300 })
         };
         // Material names for random selection (shared, safe for opaque)
         this.blockMaterialNames = ['ruby', 'emerald', 'amethyst', 'sapphire', 'topaz'];
 
-        // Base materials for start/end blocks
-        this.blockMaterials = {
-          normal: null, // Assigned randomly per block
-          start: new THREE.MeshLambertMaterial({ color: 0x98D9A4, emissive: 0x003300 }),
-          end: new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x443300 })
-        };
-
         // Reward models loaded from GLB files (80% of blocks have rewards)
         // Load reward GLB models (use local path for packaged app)
-        const isElectron = typeof window.require !== 'undefined';
-        const resourcesPath = isElectron && typeof process !== 'undefined' ? process.resourcesPath : '';
-        const basePath = isElectron ? resourcesPath + '/assets/' : './assets/';
+        // Detect if running in Electron via preload API
+        const isElectron = typeof window.electronAPI !== 'undefined' && window.electronAPI.resourcesPath;
+        const basePath = isElectron ? window.electronAPI.resourcesPath + '/assets/' : './assets/';
+        console.log('[GAME] isElectron:', isElectron);
+        console.log('[GAME] basePath:', basePath);
         this.basePath = basePath;  // Store for use in loadAllRewardModels
         this.rewardModels = {};
         this.modelsLoaded = false;
         this.modelsLoadingPromise = null;
-        this.rewardFloatDist = this.blockConfig.width / 2; // 27
+        this.rewardFloatDist = 12; // floating height above block top (increased from 6)
 
         this.worldOffset = { x: 0, z: 0 };
         this.gameState = 'menu';
@@ -336,7 +330,7 @@
         this.characters = this.createCharacterModels();
         this.currentCharacterType = 'rabbit';
         this.player = this.characters.rabbit.clone();
-        this.player.scale.set(12, 12, 12); // 12x scale (2x from previous 6x)
+        this.player.scale.set(18, 18, 18); // 18x scale (50% of 36x)
         // Position procedural rabbit on top of block using cached baseY
         this.player.position.set(0, this.baseY, 0);
         this.scene.add(this.player);
@@ -442,6 +436,7 @@
                 const model = gltf.scene;
                 const box = new THREE.Box3().setFromObject(model);
                 const size = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+                // Scale reward models to same size as rabbit (18x scale)
                 const scale = 36 / size;
                 model.scale.set(scale, scale, scale);
                 this.rewardModels[name] = model;
@@ -998,9 +993,7 @@
 
         if (reward && this.rewardModels[reward]) {
           const rewardMesh = this.rewardModels[reward].clone();
-          // Position: block top + rewardFloatDist above block top
-          // Block is at y=0 with height 7.2, so top is at y=7.2
-          // Reward floats at block top + 4.5 = 8.1 above block base
+          // Position reward high above block top
           rewardMesh.position.y = this.blockConfig.height + this.rewardFloatDist;
           rewardMesh.userData.isReward = true;
           rewardMesh.userData.floatOffset = Math.random() * Math.PI * 2;
@@ -1209,27 +1202,27 @@
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:300;display:flex;justify-content:center;align-items:center;';
 
         const dialog = document.createElement('div');
-        dialog.style.cssText = 'background:white;padding:80px 150px;border-radius:40px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
+        dialog.style.cssText = 'background:white;padding:40px 75px;border-radius:20px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
 
         const title = document.createElement('h2');
         title.textContent = '🎉 过关！';
-        title.style.cssText = 'font-size:6em;margin:0 0 40px 0;color:#333;';
+        title.style.cssText = 'font-size:3em;margin:0 0 20px 0;color:#333;';
 
         const score = document.createElement('p');
         score.textContent = `本关得分: ⭐×${this.levelScore}`;
-        score.style.cssText = 'font-size:3.5em;margin:0 0 30px 0;';
+        score.style.cssText = 'font-size:1.75em;margin:0 0 15px 0;';
 
         const accumulatedPoints = document.createElement('p');
         accumulatedPoints.textContent = `累计积分: ⭐×${this.accumulatedPoints}`;
-        accumulatedPoints.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#666;';
+        accumulatedPoints.style.cssText = 'font-size:1.25em;margin:0 0 15px 0;color:#666;';
 
         const rewards = document.createElement('p');
         rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  ⚡️×${this.shieldCount}  💰×${this.coinCount}`;
-        rewards.style.cssText = 'font-size:2.5em;margin:0 0 50px 0;color:#666;';
+        rewards.style.cssText = 'font-size:1.25em;margin:0 0 25px 0;color:#666;';
 
         const btn = document.createElement('button');
         btn.textContent = this.currentLevel < 20 ? '进入下一关 →' : '重新开始';
-        btn.style.cssText = 'padding:30px 80px;font-size:2.5em;border:none;border-radius:20px;background:#7EC8E3;color:white;cursor:pointer;';
+        btn.style.cssText = 'padding:15px 40px;font-size:1.25em;border:none;border-radius:10px;background:#7EC8E3;color:white;cursor:pointer;';
         btn.onclick = () => {
           document.body.removeChild(overlay);
           if (this.currentLevel < 20) {

@@ -5,6 +5,7 @@
   "main": "scripts/main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "npx http-server . -p 8080",
     "build": "electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -22,7 +23,10 @@
       "**/*",
       "!node_modules/**/*",
       "!dist/**/*",
-      "!test-results/**/*"
+      "!test-results/**/*",
+      "!assets/**/*.glb",
+      "!assets/**/*.png",
+      "!assets/**/*.jpeg"
     ],
     "mac": {
       "target": [
@@ -41,6 +45,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "asar": "^3.2.0",
     "electron": "^42.2.0",
     "electron-builder": "^26.8.1"
   },

@@ -7,7 +7,7 @@ test.describe('Reward Models Loading', () => {
       logs.push(`[${msg.type()}] ${msg.text()}`);
     });
 
-    await page.goto('http://localhost:8081/index.html');
+    await page.goto('http://localhost:8080/index.html');
     await page.waitForTimeout(5000);
 
     // Check if reward models are loaded
