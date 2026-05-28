@@ -995,8 +995,9 @@
             const flagWidth = 10.8 * 3;
             const flagHeight = 6.75 * 3;
             const flag = new THREE.Mesh(new THREE.PlaneGeometry(flagWidth, flagHeight), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
-            // Position flag on top of pole: x = pole radius + half flag width, y = pole top + half flag height
-            flag.position.set(0.9 + flagWidth / 2, poleHeight + flagHeight / 2, 0);
+            // Position flag on top of pole: after rotation Y, width is along Z axis
+            const poleTopRadius = 0.72; // top radius of the pole
+            flag.position.set(0, poleHeight + flagHeight / 2, poleTopRadius + flagWidth / 2);
             flag.rotation.y = Math.PI / 2;
             group.add(flag);
           }
@@ -1213,11 +1214,27 @@
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:300;display:flex;justify-content:center;align-items:center;';
 
         const dialog = document.createElement('div');
-        dialog.style.cssText = 'background:white;padding:40px 75px;border-radius:20px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
+        
+        if (this.currentLevel >= 20) {
+          dialog.style.cssText = 'background:linear-gradient(135deg, #FFD700 0%, #FFA500 100%);padding:60px 80px;border-radius:30px;text-align:center;box-shadow:0 40px 100px rgba(0,0,0,0.5);font-family:Nunito,sans-serif;max-width:95%;border:5px solid #FFD700;';
+        } else {
+          dialog.style.cssText = 'background:white;padding:40px 75px;border-radius:20px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
+        }
 
         const title = document.createElement('h2');
-        title.textContent = '🎉 过关！';
-        title.style.cssText = 'font-size:3em;margin:0 0 20px 0;color:#333;';
+        if (this.currentLevel >= 20) {
+          title.textContent = '🏆 恭喜完成！🎉';
+          title.style.cssText = 'font-size:4em;margin:0 0 20px 0;color:#fff;text-shadow:3px 3px 6px rgba(0,0,0,0.3);animation:bounce 1s infinite;';
+        } else {
+          title.textContent = '🎉 过关！';
+          title.style.cssText = 'font-size:3em;margin:0 0 20px 0;color:#333;';
+        }
+
+        const subtitle = document.createElement('h3');
+        if (this.currentLevel >= 20) {
+          subtitle.textContent = '✨ 晋升成「小天才」！✨';
+          subtitle.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.3);';
+        }
 
         const score = document.createElement('p');
         score.textContent = `本关得分: ⭐×${this.levelScore}`;
@@ -1225,31 +1242,84 @@
 
         const accumulatedPoints = document.createElement('p');
         accumulatedPoints.textContent = `累计积分: ⭐×${this.accumulatedPoints}`;
-        accumulatedPoints.style.cssText = 'font-size:1.25em;margin:0 0 15px 0;color:#666;';
+        if (this.currentLevel >= 20) {
+          accumulatedPoints.style.cssText = 'font-size:1.5em;margin:0 0 20px 0;color:#fff;text-shadow:1px 1px 2px rgba(0,0,0,0.3);';
+        } else {
+          accumulatedPoints.style.cssText = 'font-size:1.25em;margin:0 0 15px 0;color:#666;';
+        }
 
         const rewards = document.createElement('p');
         rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  ⚡️×${this.shieldCount}  💰×${this.coinCount}`;
-        rewards.style.cssText = 'font-size:1.25em;margin:0 0 25px 0;color:#666;';
+        if (this.currentLevel >= 20) {
+          rewards.style.cssText = 'font-size:1.5em;margin:0 0 30px 0;color:#fff;text-shadow:1px 1px 2px rgba(0,0,0,0.3);';
+        } else {
+          rewards.style.cssText = 'font-size:1.25em;margin:0 0 25px 0;color:#666;';
+        }
 
         const btn = document.createElement('button');
-        btn.textContent = this.currentLevel < 20 ? '进入下一关 →' : '重新开始';
-        btn.style.cssText = 'padding:15px 40px;font-size:1.25em;border:none;border-radius:10px;background:#7EC8E3;color:white;cursor:pointer;';
-        btn.onclick = () => {
+        if (this.currentLevel >= 20) {
+          btn.textContent = '🎮 再来一次';
+          btn.style.cssText = 'padding:20px 50px;font-size:1.5em;border:none;border-radius:15px;background:#fff;color:#FFA500;cursor:pointer;font-weight:bold;box-shadow:0 5px 20px rgba(0,0,0,0.2);transition:transform 0.2s;';
+          btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
+          btn.onmouseout = () => btn.style.transform = 'scale(1)';
+        } else {
+          btn.textContent = '进入下一关 →';
+          btn.style.cssText = 'padding:15px 40px;font-size:1.25em;border:none;border-radius:10px;background:#7EC8E3;color:white;cursor:pointer;';
+        }
+        
+        const handleNextLevel = () => {
           document.body.removeChild(overlay);
+          document.removeEventListener('keydown', handleKeyDown);
           if (this.currentLevel < 20) {
             this.loadLevel(this.currentLevel + 1);
           } else {
             this.loadLevel(1);
           }
         };
+        
+        btn.onclick = handleNextLevel;
+        
+        const handleKeyDown = (e) => {
+          if (e.code === 'Space' || e.code === 'Enter') {
+            e.preventDefault();
+            handleNextLevel();
+          }
+        };
+        document.addEventListener('keydown', handleKeyDown);
 
         dialog.appendChild(title);
+        if (this.currentLevel >= 20) {
+          dialog.appendChild(subtitle);
+        }
         dialog.appendChild(score);
         dialog.appendChild(accumulatedPoints);
         dialog.appendChild(rewards);
         dialog.appendChild(btn);
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
+        
+        if (this.currentLevel >= 20) {
+          this.createGrandCelebration();
+        }
+      }
+
+      createGrandCelebration() {
+        const celebrationDiv = document.createElement('div');
+        celebrationDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:250;overflow:hidden;';
+        
+        const emojis = ['*', '+', '-', '#', '$', '%', '&', '@'];
+        for (let i = 0; i < 50; i++) {
+          const emoji = document.createElement('span');
+          emoji.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+          emoji.style.cssText = 'position:absolute;font-size:20px;left:50%;top:50%;color:gold;';
+          celebrationDiv.appendChild(emoji);
+        }
+        
+        document.body.appendChild(celebrationDiv);
+        
+        setTimeout(() => {
+          document.body.removeChild(celebrationDiv);
+        }, 3000);
       }
 
       flashScreen() {
