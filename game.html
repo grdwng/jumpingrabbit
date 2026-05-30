@@ -307,6 +307,7 @@
 
         this.playerPosition = { x: 0, y: 0, z: 0 }; // Grid position with height (y)
         this.worldOffset = { x: 0, z: 0 };
+        this.unlockedLevels = [1]; // Initial: only level 1 unlocked
         this.gameState = 'menu';
         this.jumpDuration = 400;
         this.lives = 3;
@@ -1107,6 +1108,11 @@
       }
 
       loadLevel(levelId) {
+        // Check if level is unlocked
+        if (!this.unlockedLevels.includes(levelId)) {
+          console.error('Level not unlocked:', levelId);
+          return;
+        }
         const level = this.levels.find(l => l.id === levelId);
         if (!level) return;
 
@@ -1339,6 +1345,22 @@
         this.levelScore = 100;
         // Accumulated points: only coins × 20 (no level bonus double-counting)
         this.accumulatedPoints += this.coinCount * 20;
+
+        // Unlock next level
+        const nextLevel = this.currentLevel + 1;
+        if (!this.unlockedLevels.includes(nextLevel)) {
+          this.unlockedLevels.push(nextLevel);
+        }
+
+        // 初级通关后解锁中级
+        if (this.currentLevel === 20) {
+          for (let i = 21; i <= 35; i++) {
+            if (!this.unlockedLevels.includes(i)) {
+              this.unlockedLevels.push(i);
+            }
+          }
+        }
+
         this.updateHUD();
 
         // Visual celebration - flash screen and confetti burst
