@@ -305,6 +305,7 @@
         this.modelsLoadingPromise = null;
         this.rewardFloatDist = 20; // floating height above block top (increased from 6)
 
+        this.playerPosition = { x: 0, y: 0, z: 0 }; // Grid position with height (y)
         this.worldOffset = { x: 0, z: 0 };
         this.gameState = 'menu';
         this.jumpDuration = 400;
@@ -318,6 +319,10 @@
         this.accumulatedPoints = 0;    // 累计积分 (coins × 20 only, no level bonus)
         this.scaledBottom = 0;
         this.baseY = this.blockConfig.height - this.scaledBottom + 3.1;
+
+        // Jump validation state for testing
+        this.jumpAttempted = false;
+        this.lastJumpResult = null;
 
         this.directionMap = {
           'ArrowUp': { x: 0, z: -1 }, 'ArrowDown': { x: 0, z: 1 },
@@ -1074,6 +1079,43 @@
         const dir = this.directionMap[e.key];
         if (dir) {
           e.preventDefault();
+
+          // Calculate target position (jump 2 blocks)
+          const targetGridX = this.playerPosition.x - dir.x * 2;
+          const targetGridZ = this.playerPosition.z - dir.z * 2;
+
+          // Find target block to determine target height
+          let targetBlock = null;
+          for (const b of this.blocks) {
+            // Block userData has x, y, z as grid coordinates
+            if (Math.abs(b.userData.x - targetGridX) < 0.8 && Math.abs(b.userData.z - targetGridZ) < 0.8) {
+              targetBlock = b;
+              break;
+            }
+          }
+
+          if (targetBlock) {
+            const targetHeight = targetBlock.userData.y || 0;
+            const currentHeight = this.playerPosition.y || 0;
+            const heightDiff = targetHeight - currentHeight;
+
+            this.jumpAttempted = true;
+
+            // Height diff > 1: cannot jump (too high)
+            if (heightDiff > 1) {
+              this.lastJumpResult = 'blocked';
+              return;
+            }
+
+            // Height diff > 0: need Space key for upward jump
+            if (heightDiff > 0 && e.code !== 'Space') {
+              this.lastJumpResult = 'blocked';
+              return;
+            }
+
+            this.lastJumpResult = 'allowed';
+          }
+
           this.startJump(dir);
         }
       }
@@ -1081,6 +1123,10 @@
       startJump(dir) {
         this.gameState = 'jumping';
         this.audio.playSound('jump');
+
+        // Update player grid position
+        this.playerPosition.x -= dir.x * 2;
+        this.playerPosition.z -= dir.z * 2;
 
         const startTime = performance.now();
         const worldMoveX = -dir.x * this.blockConfig.width * 2; // Jump 2 blocks
@@ -1156,6 +1202,9 @@
         }
 
         if (onBlock) {
+          // Update player height when landing
+          this.playerPosition.y = onBlock.userData.y || 0;
+
           if (onBlock.userData.reward) {
             this.collectReward(onBlock);
           }
