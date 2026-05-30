@@ -1116,11 +1116,11 @@
             this.lastJumpResult = 'allowed';
           }
 
-          this.startJump(dir);
+          this.startJump(dir, targetBlock);
         }
       }
 
-      startJump(dir) {
+      startJump(dir, targetBlock) {
         this.gameState = 'jumping';
         this.audio.playSound('jump');
 
@@ -1132,6 +1132,12 @@
         const worldMoveX = -dir.x * this.blockConfig.width * 2; // Jump 2 blocks
         const worldMoveZ = -dir.z * this.blockConfig.depth * 2;
 
+        // Calculate target height based on target block
+        const targetHeight = targetBlock ? (targetBlock.userData.y || 0) : this.playerPosition.y || 0;
+        const heightDiff = targetHeight - (this.playerPosition.y || 0);
+        const targetY = this.blockConfig.height * targetHeight + (this.blockConfig.height - this.scaledBottom + 3.1);
+        const startY = this.player.position.y;
+
         const animate = (now) => {
           const t = Math.min((now - startTime) / this.jumpDuration, 1);
           const arc = Math.sin(t * Math.PI);
@@ -1139,7 +1145,8 @@
           // Keep player centered on screen, only animate Y (arc)
           this.player.position.x = 0;
           this.player.position.z = 0;
-          this.player.position.y = this.baseY + arc * 6.8;
+          // Interpolate Y from startY to targetY based on arc
+          this.player.position.y = startY + (targetY - startY) * arc;
 
           // Move world gradually during animation
           const currentMoveX = worldMoveX * t;
@@ -1175,8 +1182,8 @@
               b.userData.originalZ = b.position.z;
             });
 
-            // Reset player position - use cached base Y
-            this.player.position.set(0, this.baseY, 0);
+            // Reset player position to targetY (final height after jump)
+            this.player.position.set(0, targetY, 0);
             this.onLand();
           }
         };
