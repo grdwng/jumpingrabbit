@@ -1062,7 +1062,8 @@
         }
 
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.castShadow = true;
+        // Shadow: full shadow for y=0, reduced for y=1, none for y=2
+        mesh.castShadow = (y < 2);
         mesh.receiveShadow = true;
         group.add(mesh);
 
