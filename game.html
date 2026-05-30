@@ -970,6 +970,16 @@
           mat = this.blockMaterials[type];
         }
 
+        // Color variation by height: brighter for higher y levels
+        if (y > 0 && mat) {
+          mat = mat.clone();
+          const hsl = {};
+          mat.color.getHSL(hsl);
+          hsl.s *= (1 - y * 0.15); // Reduce saturation slightly
+          hsl.l += y * 0.1; // Increase lightness
+          mat.color.setHSL(hsl.h, hsl.s, Math.min(hsl.l, 1));
+        }
+
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -1012,7 +1022,7 @@
           group.add(rewardMesh);
         }
 
-        group.position.set(x * this.blockConfig.width, 0, z * this.blockConfig.depth);
+        group.position.set(x * this.blockConfig.width, y * this.blockConfig.height, z * this.blockConfig.depth);
         return group;
       }
 
