@@ -972,7 +972,6 @@
         // Floating animation data
         group.userData.floatOffset = Math.random() * Math.PI * 2;
         group.userData.baseY = 0;
-
         if (type === 'start' || type === 'end') {
           const edges = new THREE.EdgesGeometry(geo);
           const edgeMat = new THREE.LineBasicMaterial({ color: type === 'start' ? 0x00FF00 : 0xFF0000 });

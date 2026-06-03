@@ -306,6 +306,11 @@
         this.rewardFloatDist = 20; // floating height above block top (increased from 6)
 
         this.playerPosition = { x: 0, y: 0, z: 0 }; // Grid position with height (y)
+        this.spacePressed = false; // Track if Space key is currently held down
+        this.pendingDirection = null; // Buffered direction waiting for possible space
+        this.pendingDirectionTimeout = null; // Timeout ID for buffered direction
+        this.pendingSpace = false; // Buffered space waiting for possible direction
+        this.pendingSpaceTimeout = null; // Timeout ID for buffered space
         this.worldOffset = { x: 0, z: 0 };
         this.unlockedLevels = [1]; // Initial: only level 1 unlocked
         this.gameState = 'menu';
@@ -412,6 +417,7 @@
 
         window.addEventListener('resize', () => this.onResize());
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
+        window.addEventListener('keyup', (e) => this.onKeyUp(e));
 
         // Cache HUD element references for batch updates - must be before loadLevel()
         this.hudElements = {
@@ -903,115 +909,238 @@
             {x:4,y:0,z:0,type:'normal'},{x:6,y:0,z:0,type:'normal'},{x:8,y:0,z:0,type:'normal',reward:assignReward()},
             {x:8,y:0,z:-2,type:'normal',reward:assignReward()},{x:8,y:0,z:-4,type:'normal',reward:assignReward()},{x:10,y:0,z:-4,type:'end'}
           ]},
-          { id: 16, name: "跳跃", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:0,y:0,z:-2,type:'normal',reward:assignReward()},{x:0,y:0,z:-4,type:'normal',reward:assignReward()},
-            {x:2,y:0,z:-4,type:'normal'},{x:4,y:0,z:-4,type:'normal',reward:assignReward()},{x:4,y:0,z:-2,type:'normal',reward:assignReward()},
-            {x:4,y:0,z:0,type:'normal'},{x:6,y:0,z:0,type:'normal',reward:assignReward()},{x:8,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:8,y:0,z:2,type:'normal'},{x:6,y:0,z:2,type:'normal',reward:assignReward()},{x:4,y:0,z:2,type:'end'}
+          { id: 16, name: "错落初体验", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.3,floatSpeed:2.3,opacity:0.85}},
+            {x:4,y:2,z:0,type:'normal',custom:{floatAmplitude:1.5,floatSpeed:2.5,color:0xFFE066,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{width:55,height:8,depth:55,floatAmplitude:0.8,floatSpeed:2.5,floatPhase:3.14,opacity:0.75}},
+            {x:8,y:4,z:0,type:'normal',custom:{floatAmplitude:1.8,floatSpeed:2,color:0x99E1FF,opacity:1}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:48,height:7,depth:48,opacity:0.95,floatAmplitude:2,floatSpeed:1.8,color:0xE6B3FF}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:0.9,floatSpeed:2.5,opacity:0.78}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.92}},
+            {x:16,y:8,z:0,type:'normal',custom:{width:45,height:7,depth:45,opacity:0.98,floatAmplitude:2.2,floatSpeed:1.7,color:0xFF99CC}},
+            {x:18,y:9,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.6,opacity:0.88}},
+            {x:20,y:10,z:0,type:'normal',custom:{width:48,height:7,depth:48,opacity:0.96,floatAmplitude:2.4,floatSpeed:1.6,color:0xFFCC00}},
+            {x:22,y:11,z:0,type:'end',custom:{width:55,height:8,depth:55,floatAmplitude:2.1,floatSpeed:1.9,color:0xFFE066,opacity:1}}
           ]},
-          { id: 17, name: "三角", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:0,z:0,type:'normal'},{x:6,y:0,z:-2,type:'normal',reward:assignReward()},{x:6,y:0,z:-4,type:'normal',reward:assignReward()},
-            {x:4,y:0,z:-4,type:'normal'},{x:2,y:0,z:-4,type:'normal',reward:assignReward()},{x:0,y:0,z:-4,type:'normal'},
-            {x:-2,y:0,z:-4,type:'normal',reward:assignReward()},{x:-2,y:0,z:-2,type:'normal',reward:assignReward()},{x:-2,y:0,z:0,type:'end'}
+          { id: 17, name: "三角高地", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1,floatSpeed:3,opacity:0.8}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,color:0xE6B3FF,floatAmplitude:2,floatSpeed:2,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.8,floatPhase:3.14,opacity:0.85}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.2,floatSpeed:1.5,color:0xFF99CC}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.8,floatSpeed:2.2,opacity:0.95}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:0.9,floatSpeed:2.5,opacity:0.75}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.6,opacity:0.88}},
+            {x:16,y:6,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.3,floatSpeed:1.7,opacity:0.96,color:0xFFE066}},
+            {x:18,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.92}},
+            {x:20,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.1,floatSpeed:2.5,opacity:0.82}},
+            {x:22,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.5,floatSpeed:1.5,opacity:0.98,color:0x99E1FF}},
+            {x:24,y:2,z:0,type:'end',custom:{floatAmplitude:1.9,floatSpeed:2,color:0xFFCC66,opacity:1}}
           ]},
-          { id: 18, name: "阶梯", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:0,z:2,type:'normal'},{x:4,y:0,z:4,type:'normal',reward:assignReward()},{x:6,y:0,z:4,type:'normal'},{x:8,y:0,z:4,type:'normal',reward:assignReward()},
-            {x:8,y:0,z:2,type:'normal',reward:assignReward()},{x:8,y:0,z:0,type:'normal'},{x:10,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:10,y:0,z:-2,type:'normal',reward:assignReward()},{x:10,y:0,z:-4,type:'end'}
+          { id: 18, name: "高低折线", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.8,floatSpeed:2.5,color:0xFFE066,opacity:1}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.8,floatSpeed:2.8,floatPhase:3.14,opacity:0.7}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{width:48,height:7,depth:48,floatAmplitude:2,floatSpeed:2.2,opacity:1,color:0x99E1FF}},
+            {x:8,y:4,z:0,type:'normal',custom:{floatAmplitude:1,floatSpeed:2.6,floatPhase:3.14,opacity:0.75}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:45,height:6.5,depth:45,opacity:0.98,color:0xE6B3FF,floatAmplitude:2.3,floatSpeed:1.8}},
+            {x:12,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.4,floatSpeed:1.6,color:0xFF99CC,opacity:0.96}},
+            {x:14,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.5,opacity:0.82}},
+            {x:16,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.1,floatSpeed:1.9,color:0xFFCC00,opacity:0.94}},
+            {x:18,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.4,opacity:0.86}},
+            {x:20,y:2,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.6,floatSpeed:1.4,color:0xE6B3FF,opacity:0.98}},
+            {x:22,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.9}},
+            {x:24,y:4,z:0,type:'end',custom:{floatAmplitude:2.2,floatSpeed:1.7,opacity:0.92,color:0xFFE066}}
           ]},
-          { id: 19, name: "环绕2", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:0,z:0,type:'normal'},{x:8,y:0,z:0,type:'normal',reward:assignReward()},{x:10,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:10,y:0,z:-2,type:'normal',reward:assignReward()},{x:10,y:0,z:-4,type:'normal',reward:assignReward()},{x:8,y:0,z:-4,type:'normal'},
-            {x:6,y:0,z:-4,type:'normal',reward:assignReward()},{x:4,y:0,z:-4,type:'normal',reward:assignReward()},{x:2,y:0,z:-4,type:'normal',reward:assignReward()},
-            {x:0,y:0,z:-4,type:'normal'},{x:-2,y:0,z:-4,type:'normal'},{x:-2,y:0,z:-2,type:'normal',reward:assignReward()},
-            {x:-2,y:0,z:0,type:'end'}
+          { id: 19, name: "环绕起伏", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.8,opacity:0.85}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.8,floatSpeed:2.6,floatPhase:3.14,opacity:0.72}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2,floatSpeed:2.2,opacity:1,color:0x99E1FF}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1,floatSpeed:2.4,opacity:0.78}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.1,floatSpeed:2,color:0xFFE066,opacity:1}},
+            {x:12,y:6,z:0,type:'normal',custom:{floatAmplitude:1.5,floatSpeed:2.5,floatPhase:3.14,opacity:0.9}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{width:45,height:6.5,depth:45,opacity:0.98,color:0xE6B3FF,floatAmplitude:2.4,floatSpeed:1.7}},
+            {x:16,y:6,z:0,type:'normal',custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.92}},
+            {x:18,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:52,height:8,depth:52,floatAmplitude:0.9,floatSpeed:2.7,opacity:0.75}},
+            {x:20,y:4,z:0,type:'normal',custom:{floatAmplitude:2,floatSpeed:1.9,color:0xFFCC66,opacity:1}},
+            {x:22,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.5,floatSpeed:1.5,color:0xFF99CC,opacity:0.96}},
+            {x:24,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.2,floatSpeed:1.8,color:0x99E1FF,opacity:0.94}},
+            {x:26,y:1,z:0,type:'end',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.7,floatSpeed:1.3,color:0xFFE066,opacity:1}}
           ]},
-          { id: 20, name: "终极", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:0,z:0,type:'normal'},{x:8,y:0,z:0,type:'normal',reward:assignReward()},{x:10,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:10,y:0,z:-2,type:'normal',reward:assignReward()},{x:10,y:0,z:-4,type:'normal',reward:assignReward()},{x:8,y:0,z:-4,type:'normal'},
-            {x:6,y:0,z:-4,type:'normal',reward:assignReward()},{x:4,y:0,z:-4,type:'normal',reward:assignReward()},{x:2,y:0,z:-4,type:'normal',reward:assignReward()},
-            {x:0,y:0,z:-4,type:'normal'},{x:0,y:0,z:-6,type:'normal'},{x:2,y:0,z:-6,type:'normal',reward:assignReward()},
-            {x:4,y:0,z:-6,type:'normal',reward:assignReward()},{x:6,y:0,z:-6,type:'normal',reward:assignReward()},{x:8,y:0,z:-6,type:'end'}
+          { id: 20, name: "终极错落", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.6,opacity:0.88}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.9,floatSpeed:2.8,floatPhase:3.14,opacity:0.73}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2,floatSpeed:2.1,color:0xFFE066,opacity:1}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.1,floatSpeed:2.5,floatPhase:3.14,opacity:0.8}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.2,floatSpeed:1.9,opacity:1,color:0x99E1FF}},
+            {x:12,y:6,z:0,type:'normal',custom:{floatAmplitude:1.5,floatSpeed:2.3,floatPhase:3.14,opacity:0.9}},
+            {x:14,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:45,height:6.5,depth:45,opacity:0.98,color:0xE6B3FF,floatAmplitude:2.5,floatSpeed:1.5}},
+            {x:16,y:4,z:0,type:'normal',custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92}},
+            {x:18,y:3,z:0,type:'normal',reward:assignReward(),custom:{width:52,height:8,depth:52,floatAmplitude:0.95,floatSpeed:2.6,opacity:0.76}},
+            {x:20,y:4,z:0,type:'normal',custom:{floatAmplitude:1.3,floatSpeed:2.4,opacity:0.86}},
+            {x:22,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:48,height:7,depth:48,floatAmplitude:2.4,floatSpeed:1.6,color:0xFF99CC,opacity:0.96}},
+            {x:24,y:6,z:0,type:'normal',custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.9}},
+            {x:26,y:7,z:0,type:'end',custom:{floatAmplitude:2.7,floatSpeed:1.3,color:0xFFCC66,opacity:1}}
           ]},
-          // 中级关卡（21-35）：高度变化机制
-          { id: 21, name: "初见高低", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal',reward:assignReward()},{x:6,y:1,z:0,type:'normal'},{x:8,y:1,z:0,type:'normal',reward:assignReward()},
-            {x:8,y:0,z:0,type:'normal',reward:assignReward()},{x:10,y:0,z:0,type:'end'}
+          // 中级关卡（21-30）：更大高度差和更复杂错落
+          { id: 21, name: "初见高度差", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.3,floatSpeed:2.7,opacity:0.87}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.85,floatSpeed:2.5,floatPhase:3.14,opacity:0.72}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.9,floatSpeed:2.1,color:0x99E1FF,opacity:1}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.05,floatSpeed:2.4,opacity:0.78}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.1,floatSpeed:1.9,color:0xFFE066,opacity:1}},
+            {x:12,y:4,z:0,type:'normal',custom:{floatAmplitude:1.4,floatSpeed:2.3,opacity:0.88}},
+            {x:14,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.0,floatSpeed:1.8,color:0xE6B3FF,opacity:0.96}},
+            {x:16,y:6,z:0,type:'normal',custom:{floatAmplitude:1.2,floatSpeed:2.5,opacity:0.84}},
+            {x:18,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.3,floatSpeed:1.7,color:0xFF99CC,opacity:0.98}},
+            {x:20,y:8,z:0,type:'normal',custom:{floatAmplitude:1.6,floatSpeed:2.2,opacity:0.92}},
+            {x:22,y:9,z:0,type:'end',custom:{width:55,height:8,depth:55,floatAmplitude:2.2,floatSpeed:1.6,color:0xFFCC00,opacity:1}}
           ], targetCoins: 350},
-          { id: 22, name: "高低错落", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal'},{x:4,y:0,z:0,type:'normal',reward:assignReward()},{x:6,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:1,z:0,type:'normal',reward:assignReward()},{x:8,y:1,z:0,type:'normal'},{x:10,y:1,z:0,type:'end'}
+          { id: 22, name: "高低大错落", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.8,floatSpeed:2.4,color:0xFFE066,opacity:1}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.88,floatSpeed:2.7,floatPhase:3.14,opacity:0.7}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{width:48,height:7,depth:48,floatAmplitude:2.2,floatSpeed:1.8,opacity:1,color:0x99E1FF}},
+            {x:8,y:4,z:0,type:'normal',custom:{floatAmplitude:1.1,floatSpeed:2.6,floatPhase:3.14,opacity:0.76}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:45,height:6.5,depth:45,opacity:0.98,color:0xE6B3FF,floatAmplitude:2.4,floatSpeed:1.6}},
+            {x:12,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.5,floatSpeed:1.5,color:0xFF99CC,opacity:0.96}},
+            {x:14,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.4,opacity:0.88}},
+            {x:16,y:4,z:0,type:'normal',custom:{floatAmplitude:2.1,floatSpeed:1.9,color:0xFFCC00,opacity:0.94}},
+            {x:18,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.6,opacity:0.82}},
+            {x:20,y:6,z:0,type:'normal',custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92}},
+            {x:22,y:7,z:0,type:'normal',reward:assignReward(),custom:{width:52,height:8,depth:52,floatAmplitude:2.6,floatSpeed:1.4,color:0xE6B3FF,opacity:0.98}},
+            {x:24,y:8,z:0,type:'end',custom:{width:52,height:8,depth:52,floatAmplitude:1.6,floatSpeed:2.3,opacity:0.9}}
           ], targetCoins: 380},
-          { id: 23, name: "台阶之旅", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal'},{x:6,y:1,z:0,type:'normal',reward:assignReward()},{x:6,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:8,y:2,z:0,type:'normal'},{x:10,y:2,z:0,type:'end'}
+          { id: 23, name: "大台阶之旅", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.15,floatSpeed:2.8,opacity:0.82}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.1,floatSpeed:2,color:0xFFE066,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.3,floatPhase:3.14,opacity:0.86}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.3,floatSpeed:1.7,opacity:1,color:0x99E1FF}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.2,opacity:0.88}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.6,floatSpeed:1.5,color:0xE6B3FF}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.3,floatSpeed:2.5,opacity:0.86}},
+            {x:16,y:8,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:2.4,floatSpeed:1.6,color:0xFF99CC,opacity:0.96}},
+            {x:18,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.2,opacity:0.9}},
+            {x:20,y:8,z:0,type:'normal',custom:{floatAmplitude:2.0,floatSpeed:1.9,color:0xFFCC00,opacity:0.94}},
+            {x:22,y:9,z:0,type:'normal',reward:assignReward(),custom:{width:50,height:7.5,depth:50,floatAmplitude:2.7,floatSpeed:1.3,opacity:0.98,color:0xE6B3FF}},
+            {x:24,y:10,z:0,type:'end',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.2,floatSpeed:1.7,color:0xFFE066}}
           ], targetCoins: 400},
-          { id: 24, name: "间歇 Height", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal'},{x:6,y:1,z:0,type:'normal',reward:assignReward()},{x:6,y:0,z:0,type:'normal'},
-            {x:8,y:0,z:0,type:'normal',reward:assignReward()},{x:10,y:0,z:0,type:'end'}
+          { id: 24, name: "间歇大高度", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.65,floatSpeed:2.5,color:0x99E1FF,opacity:1}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.9,floatSpeed:2.6,floatPhase:3.14,opacity:0.74}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2,floatSpeed:2,opacity:1}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.15,floatSpeed:2.5,opacity:0.78}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.3,floatSpeed:1.7,color:0xE6B3FF,opacity:1}},
+            {x:12,y:4,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:1.55,floatSpeed:2.3,opacity:0.88}},
+            {x:14,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.4,floatSpeed:1.6,color:0xFF99CC,opacity:0.96}},
+            {x:16,y:4,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:1.3,floatSpeed:2.6,opacity:0.82}},
+            {x:18,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92}},
+            {x:20,y:6,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.2,floatSpeed:1.8,color:0xFFCC00,opacity:0.94}},
+            {x:22,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.4,opacity:0.86}},
+            {x:24,y:8,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.0,floatSpeed:1.9,color:0xE6B3FF,opacity:0.96}},
+            {x:26,y:9,z:0,type:'end',custom:{width:52,height:8,depth:52,floatAmplitude:2.6,floatSpeed:1.4,opacity:0.98,color:0xFFE066}}
           ], targetCoins: 380},
-          { id: 25, name: "高度适应", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal'},{x:4,y:2,z:0,type:'normal',reward:assignReward()},{x:6,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:1,z:0,type:'normal'},{x:8,y:1,z:0,type:'normal',reward:assignReward()},{x:10,y:1,z:0,type:'end'}
+          { id: 25, name: "高度大适应", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.4,opacity:0.85}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.2,floatSpeed:1.9,color:0xFFE066,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.45,floatSpeed:2.5,floatPhase:3.14,opacity:0.86}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.35,floatSpeed:1.6,color:0x99E1FF}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.2,floatPhase:3.14,opacity:0.88}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.5,floatSpeed:1.5,opacity:1,color:0xE6B3FF}},
+            {x:14,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.0,floatSpeed:1.9,color:0xFF99CC,opacity:0.96}},
+            {x:16,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.3,floatSpeed:2.4,opacity:0.82}},
+            {x:18,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92}},
+            {x:20,y:6,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:2.4,floatSpeed:1.6,color:0xFFCC00,opacity:0.94}},
+            {x:22,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.3,opacity:0.88}},
+            {x:24,y:8,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.7,floatSpeed:1.3,color:0xE6B3FF,opacity:0.98}},
+            {x:26,y:9,z:0,type:'end',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.1,floatSpeed:1.8,opacity:0.9}}
           ], targetCoins: 420},
-          { id: 26, name: "Jump needed", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal'},
-            {x:4,y:2,z:0,type:'normal',reward:assignReward()},{x:6,y:2,z:0,type:'normal',reward:assignReward()},{x:8,y:2,z:0,type:'end'}
+          { id: 26, name: "大Jump needed", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.25,floatSpeed:2.6,opacity:0.82}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.9,floatSpeed:2.5,floatPhase:3.14,opacity:0.72}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2,floatSpeed:2,color:0xFFE066,opacity:1}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.05,floatSpeed:2.4,opacity:0.76}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.15,floatSpeed:1.8,opacity:1}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:1.35,floatSpeed:2.3,color:0x99E1FF,opacity:0.85}},
+            {x:14,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.4,opacity:0.88}},
+            {x:16,y:6,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.3,floatSpeed:1.7,color:0xE6B3FF,opacity:0.96}},
+            {x:18,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92}},
+            {x:20,y:8,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.4,floatSpeed:2.5,opacity:0.86}},
+            {x:22,y:9,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.5,floatSpeed:1.5,color:0xFF99CC,opacity:0.98}},
+            {x:24,y:10,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.0,floatSpeed:1.9,opacity:0.94}},
+            {x:26,y:11,z:0,type:'end',custom:{width:52,height:8,depth:52,floatAmplitude:2.7,floatSpeed:1.3,color:0xFFCC00,opacity:1}}
           ], targetCoins: 450},
-          { id: 27, name: "阶梯跳跃", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:4,y:1,z:0,type:'normal',reward:assignReward()},{x:4,y:2,z:0,type:'normal'},{x:6,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:8,y:2,z:0,type:'end'}
+          { id: 27, name: "大阶梯跳跃", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.2,floatSpeed:2.7,opacity:0.8}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2,floatSpeed:1.9,color:0xE6B3FF,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.3,floatSpeed:2.4,floatPhase:3.14,opacity:0.83}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.6,floatSpeed:1.5,color:0xFF99CC}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.7,floatSpeed:2.1,floatPhase:3.14,opacity:0.89}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.4,floatSpeed:2.5,opacity:0.86}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.9}},
+            {x:16,y:8,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:2.4,floatSpeed:1.6,color:0xFFCC00,opacity:0.96}},
+            {x:18,y:9,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.4,opacity:0.88}},
+            {x:20,y:10,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.0,floatSpeed:1.9,color:0x99E1FF,opacity:0.94}},
+            {x:22,y:11,z:0,type:'normal',reward:assignReward(),custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.6,floatSpeed:1.4,color:0xE6B3FF}},
+            {x:24,y:12,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.2,floatSpeed:1.7,opacity:0.96,color:0xFF99CC}},
+            {x:26,y:13,z:0,type:'end',custom:{width:48,height:7,depth:48,floatAmplitude:2.7,floatSpeed:1.3,color:0xFFE066,opacity:1}}
           ], targetCoins: 480},
-          { id: 28, name: "高度迷宫", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:0,y:1,z:0,type:'normal',reward:assignReward()},{x:0,y:2,z:0,type:'normal'},{x:2,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:2,z:0,type:'end'}
+          { id: 28, name: "高度大迷宫", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.35,floatSpeed:2.6,opacity:0.84}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:55,height:8,depth:55,floatAmplitude:0.85,floatSpeed:2.7,floatPhase:3.14,opacity:0.7}},
+            {x:4,y:3,z:-2,type:'normal',reward:assignReward(),custom:{floatAmplitude:2,floatSpeed:2,color:0x99E1FF,opacity:1}},
+            {x:4,y:4,z:-4,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.5,floatSpeed:1.5,color:0xE6B3FF}},
+            {x:6,y:5,z:-4,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.9,floatSpeed:2,opacity:0.96}},
+            {x:6,y:4,z:-6,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.2,floatSpeed:2.4,floatPhase:3.14,opacity:0.78}},
+            {x:8,y:5,z:-6,type:'normal',reward:assignReward(),custom:{width:52,height:8,depth:52,floatAmplitude:2.15,floatSpeed:1.8,color:0xFFE066,opacity:1}},
+            {x:8,y:6,z:-8,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:1.4,floatSpeed:2.5,opacity:0.86,color:0xFF99CC}},
+            {x:10,y:7,z:-8,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.2,opacity:0.9}},
+            {x:10,y:8,z:-10,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.4,floatSpeed:1.6,color:0xE6B3FF,opacity:0.96}},
+            {x:12,y:9,z:-10,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.0,floatSpeed:1.9,opacity:0.94,color:0xFFCC00}},
+            {x:12,y:10,z:-12,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.6,floatSpeed:1.4,color:0x99E1FF,opacity:0.98}},
+            {x:14,y:11,z:-12,type:'end',custom:{width:48,height:7,depth:48,floatAmplitude:2.2,floatSpeed:1.7,color:0xFFE066,opacity:1}}
           ], targetCoins: 500},
-          { id: 29, name: "垂直之路", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:0,y:1,z:0,type:'normal',reward:assignReward()},{x:0,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:2,y:2,z:0,type:'normal'},{x:4,y:2,z:0,type:'normal',reward:assignReward()},{x:4,y:1,z:0,type:'normal',reward:assignReward()},
-            {x:6,y:1,z:0,type:'end'}
+          { id: 29, name: "垂直大之路", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.4,opacity:0.88}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.4,floatSpeed:1.6,color:0xE6B3FF}},
+            {x:4,y:3,z:-2,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.65,floatSpeed:2.2,floatPhase:3.14,opacity:0.89}},
+            {x:4,y:4,z:-4,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.55,floatSpeed:1.5,opacity:1,color:0xFF99CC}},
+            {x:6,y:5,z:-4,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,floatPhase:3.14,color:0xFFE066,opacity:0.88}},
+            {x:6,y:6,z:-6,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:2.65,floatSpeed:1.4,color:0x99E1FF,opacity:1}},
+            {x:8,y:7,z:-6,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.4,floatSpeed:2.5,opacity:0.86,color:0xE6B3FF}},
+            {x:8,y:8,z:-8,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:1.2,floatSpeed:2.6,opacity:0.82,color:0xFF99CC}},
+            {x:10,y:9,z:-8,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.7,floatSpeed:2.2,opacity:0.92,color:0xFFCC00}},
+            {x:10,y:10,z:-10,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.4,floatSpeed:1.6,opacity:0.96,color:0xE6B3FF}},
+            {x:12,y:11,z:-10,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.2,floatSpeed:1.8,opacity:0.94,color:0xFFE066}},
+            {x:12,y:12,z:-12,type:'end',custom:{width:52,height:8,depth:52,floatAmplitude:2.7,floatSpeed:1.3,opacity:0.98,color:0x99E1FF}}
           ], targetCoins: 520},
-          { id: 30, name: "连续跳跃", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal'},{x:2,y:2,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:2,z:0,type:'normal'},{x:4,y:4,z:0,type:'normal',reward:assignReward()},{x:6,y:4,z:0,type:'end'}
-          ], targetCoins: 550},
-          { id: 31, name: "复合高度", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:2,y:2,z:0,type:'normal',reward:assignReward()},{x:4,y:2,z:0,type:'normal'},{x:4,y:1,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:0,z:0,type:'normal'},{x:6,y:0,z:0,type:'end'}
-          ], targetCoins: 580},
-          { id: 32, name: "三维高度", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:4,y:1,z:-2,type:'normal',reward:assignReward()},{x:4,y:2,z:-2,type:'normal'},{x:6,y:2,z:-2,type:'normal',reward:assignReward()},
-            {x:8,y:2,z:-2,type:'end'}
-          ], targetCoins: 600},
-          { id: 33, name: "高低螺旋", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:1,z:0,type:'normal'},{x:4,y:1,z:-2,type:'normal',reward:assignReward()},{x:2,y:1,z:-2,type:'normal',reward:assignReward()},
-            {x:2,y:2,z:-2,type:'normal'},{x:2,y:2,z:-4,type:'end'}
-          ], targetCoins: 620},
-          { id: 34, name: "综合考验", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:4,y:1,z:0,type:'normal',reward:assignReward()},{x:4,y:2,z:0,type:'normal'},{x:4,y:2,z:-2,type:'normal',reward:assignReward()},
-            {x:6,y:2,z:-2,type:'normal',reward:assignReward()},{x:6,y:3,z:-2,type:'normal'},{x:8,y:3,z:-2,type:'end'}
-          ], targetCoins: 650},
-          { id: 35, name: "终极高度", blocks: [
-            {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:2,y:1,z:0,type:'normal'},
-            {x:2,y:2,z:0,type:'normal',reward:assignReward()},{x:4,y:2,z:0,type:'normal'},{x:4,y:3,z:0,type:'normal',reward:assignReward()},
-            {x:4,y:4,z:0,type:'normal'},{x:6,y:4,z:0,type:'normal',reward:assignReward()},{x:6,y:3,z:0,type:'normal',reward:assignReward()},
-            {x:8,y:3,z:0,type:'end'}
-          ], targetCoins: 700}
+          { id: 30, name: "连续大跳跃", blocks: [
+            {x:0,y:0,z:0,type:'start',custom:{width:60,height:9,depth:60}},
+            {x:2,y:1,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.45,floatSpeed:2.4,opacity:0.86}},
+            {x:4,y:2,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.3,floatSpeed:1.7,color:0x99E1FF,opacity:1}},
+            {x:6,y:3,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.3,floatPhase:3.14,opacity:0.88}},
+            {x:8,y:4,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,opacity:0.98,floatAmplitude:2.7,floatSpeed:1.4,color:0xFFE066}},
+            {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.8,floatSpeed:2,floatPhase:3.14,opacity:0.92}},
+            {x:12,y:6,z:0,type:'normal',custom:{width:50,height:7.5,depth:50,floatAmplitude:1.3,floatSpeed:2.5,opacity:0.84,color:0xE6B3FF}},
+            {x:14,y:7,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.6,floatSpeed:2.3,opacity:0.9,color:0xFF99CC}},
+            {x:16,y:8,z:0,type:'normal',custom:{width:48,height:7,depth:48,floatAmplitude:2.2,floatSpeed:1.8,opacity:0.96,color:0xFFCC00}},
+            {x:18,y:9,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:1.5,floatSpeed:2.4,opacity:0.88,color:0x99E1FF}},
+            {x:20,y:10,z:0,type:'normal',custom:{width:52,height:8,depth:52,floatAmplitude:2.0,floatSpeed:1.9,opacity:0.94,color:0xE6B3FF}},
+            {x:22,y:11,z:0,type:'normal',reward:assignReward(),custom:{floatAmplitude:2.4,floatSpeed:1.6,opacity:0.98,color:0xFF99CC}},
+            {x:24,y:12,z:0,type:'normal',custom:{width:45,height:6.5,depth:45,floatAmplitude:2.6,floatSpeed:1.4,opacity:0.96,color:0xFFCC00}},
+            {x:26,y:13,z:0,type:'end',custom:{width:48,height:7,depth:48,floatAmplitude:2.8,floatSpeed:1.3,color:0xE6B3FF,opacity:1}}
+          ], targetCoins: 550}
         ];
       }
 
@@ -1029,47 +1158,67 @@
         this.loadLevel(1);
       }
 
-      createBlock(x, y, z, type = 'normal', reward = null) {
+      createBlock(x, y, z, type = 'normal', reward = null, custom = {}) {
         const group = new THREE.Group();
         group.userData = { type, reward, x, y, z, originalX: x * this.blockConfig.width, originalY: y * this.blockConfig.height, originalZ: z * this.blockConfig.depth };
 
-        const geo = new THREE.BoxGeometry(this.blockConfig.width, this.blockConfig.height, this.blockConfig.depth);
+        // Custom block dimensions (or use defaults)
+        const width = custom.width || this.blockConfig.width;
+        const height = custom.height || this.blockConfig.height;
+        const depth = custom.depth || this.blockConfig.depth;
+
+        const geo = new THREE.BoxGeometry(width, height, depth);
 
         // Assign material based on block type
-        // For normal blocks: opaque materials can be shared, transparent need cloning
         let mat;
         if (type === 'normal') {
           const matName = this.blockMaterialNames[Math.floor(Math.random() * this.blockMaterialNames.length)];
           const baseMat = this.blockMaterials[matName];
-          // Clone transparent materials since they have unique opacity/clearcoat
           if (['crystal', 'gold', 'rose'].includes(matName)) {
             mat = baseMat.clone();
           } else {
-            mat = baseMat; // Opaque materials safe to share
+            mat = baseMat.clone(); // Clone to allow customizations
           }
         } else {
-          mat = this.blockMaterials[type];
+          mat = this.blockMaterials[type].clone();
         }
 
-        // Color variation by height: brighter for higher y levels
-        if (y > 0 && mat) {
-          mat = mat.clone();
+        // Custom opacity
+        if (custom.opacity !== undefined) {
+          mat.transparent = true;
+          mat.opacity = custom.opacity;
+        }
+
+        // Color variation by height: brighter for higher y levels, plus custom color
+        if (mat) {
           const hsl = {};
           mat.color.getHSL(hsl);
-          hsl.s *= (1 - y * 0.15); // Reduce saturation slightly
-          hsl.l += y * 0.1; // Increase lightness
+          hsl.s *= (1 - y * 0.1);
+          hsl.l += y * 0.12;
+          
+          // Custom color tint
+          if (custom.color) {
+            const customColor = new THREE.Color(custom.color);
+            const customHsl = {};
+            customColor.getHSL(customHsl);
+            hsl.h = customHsl.h;
+            hsl.s = customHsl.s;
+          }
+          
           mat.color.setHSL(hsl.h, hsl.s, Math.min(hsl.l, 1));
         }
 
         const mesh = new THREE.Mesh(geo, mat);
-        // Shadow: full shadow for y=0, reduced for y=1, none for y=2
-        mesh.castShadow = (y < 2);
+        mesh.castShadow = true;
         mesh.receiveShadow = true;
         group.add(mesh);
 
-        // Floating animation data
+        // Floating animation data with custom params
         group.userData.floatOffset = Math.random() * Math.PI * 2;
         group.userData.baseY = y * this.blockConfig.height;
+        group.userData.floatAmplitude = custom.floatAmplitude || 0; // 0.5-1.5 grid units
+        group.userData.floatSpeed = custom.floatSpeed || 0; // 2-4 seconds period
+        group.userData.floatPhase = custom.floatPhase || 0; // 0 or PI for anti-phase
 
         if (type === 'start' || type === 'end') {
           const edges = new THREE.EdgesGeometry(geo);
@@ -1083,12 +1232,10 @@
             pole.castShadow = true;
             group.add(pole);
 
-            // Scale flag 3x larger
             const flagWidth = 10.8 * 3;
             const flagHeight = 6.75 * 3;
             const flag = new THREE.Mesh(new THREE.PlaneGeometry(flagWidth, flagHeight), new THREE.MeshLambertMaterial({ color: 0xFF0000, side: THREE.DoubleSide }));
-            // Position flag on top of pole: after rotation Y, width is along Z axis
-            const poleTopRadius = 0.72; // top radius of the pole
+            const poleTopRadius = 0.72;
             flag.position.set(0, poleHeight + flagHeight / 2, poleTopRadius + flagWidth / 2);
             flag.rotation.y = Math.PI / 2;
             group.add(flag);
@@ -1097,8 +1244,7 @@
 
         if (reward && this.rewardModels[reward]) {
           const rewardMesh = this.rewardModels[reward].clone();
-          // Position reward high above block top
-          rewardMesh.position.y = this.blockConfig.height + this.rewardFloatDist;
+          rewardMesh.position.y = height + this.rewardFloatDist;
           rewardMesh.userData.isReward = true;
           rewardMesh.userData.floatOffset = Math.random() * Math.PI * 2;
           group.add(rewardMesh);
@@ -1134,7 +1280,7 @@
         this.blocks = [];
 
         level.blocks.forEach(b => {
-          const block = this.createBlock(b.x, b.y || 0, b.z, b.type, b.reward);
+          const block = this.createBlock(b.x, b.y || 0, b.z, b.type, b.reward, b.custom);
           this.blocks.push(block);
           this.scene.add(block);
         });
@@ -1154,71 +1300,162 @@
 
       onKeyDown(e) {
         if (this.gameState === 'menu') return;
+        if (this.gameState === 'jumping') return;
         if (this.gameState !== 'waiting') return;
 
         if (!this.audio.ctx) this.audio.init();
 
         const dir = this.directionMap[e.key];
+
+        // Space key: buffer it, wait briefly to see if direction is pressed too
+        if (e.code === 'Space') {
+          e.preventDefault();
+          
+          // If a direction is already buffered, combine into big jump
+          if (this.pendingDirection) {
+            const pendingDir = this.pendingDirection;
+            this.pendingDirection = null;
+            if (this.pendingDirectionTimeout) {
+              clearTimeout(this.pendingDirectionTimeout);
+              this.pendingDirectionTimeout = null;
+            }
+            this.executeJump(pendingDir, true);
+            return;
+          }
+          
+          // Buffer the space press - wait briefly to see if direction is pressed too
+          this.pendingSpace = true;
+          if (this.pendingSpaceTimeout) {
+            clearTimeout(this.pendingSpaceTimeout);
+          }
+          this.pendingSpaceTimeout = setTimeout(() => {
+            if (this.pendingSpace) {
+              this.pendingSpace = false;
+              this.pendingSpaceTimeout = null;
+              this.startJump({ x: 0, z: 0 }, null, false);
+            }
+          }, 80); // 80ms buffer window
+          
+          return;
+        }
+
         if (dir) {
           e.preventDefault();
-
-          // Calculate target position (jump 2 blocks)
-          const targetGridX = this.playerPosition.x - dir.x * 2;
-          const targetGridZ = this.playerPosition.z - dir.z * 2;
-
-          // Find target block to determine target height
-          let targetBlock = null;
-          for (const b of this.blocks) {
-            // Block userData has x, y, z as grid coordinates
-            if (Math.abs(b.userData.x - targetGridX) < 0.8 && Math.abs(b.userData.z - targetGridZ) < 0.8) {
-              targetBlock = b;
-              break;
+          
+          // If space is already buffered, combine into big jump
+          if (this.pendingSpace) {
+            this.pendingSpace = false;
+            if (this.pendingSpaceTimeout) {
+              clearTimeout(this.pendingSpaceTimeout);
+              this.pendingSpaceTimeout = null;
             }
+            this.executeJump(dir, true);
+            return;
           }
-
-          if (targetBlock) {
-            const targetHeight = targetBlock.userData.y || 0;
-            const currentHeight = this.playerPosition.y || 0;
-            const heightDiff = targetHeight - currentHeight;
-
-            this.jumpAttempted = true;
-
-            // Height diff > 1: cannot jump (too high)
-            if (heightDiff > 1) {
-              this.lastJumpResult = 'blocked';
-              return;
-            }
-
-            // Height diff > 0: need Space key for upward jump
-            if (heightDiff > 0 && e.code !== 'Space') {
-              this.lastJumpResult = 'blocked';
-              return;
-            }
-
-            this.lastJumpResult = 'allowed';
+          
+          // Buffer the direction - wait briefly to see if space is pressed too
+          this.pendingDirection = dir;
+          if (this.pendingDirectionTimeout) {
+            clearTimeout(this.pendingDirectionTimeout);
           }
-
-          this.startJump(dir, targetBlock);
+          this.pendingDirectionTimeout = setTimeout(() => {
+            if (this.pendingDirection) {
+              const pendingDir = this.pendingDirection;
+              this.pendingDirection = null;
+              this.pendingDirectionTimeout = null;
+              this.executeJump(pendingDir, false);
+            }
+          }, 80); // 80ms buffer window
         }
       }
 
-      startJump(dir, targetBlock) {
+      executeJump(dir, bigJump) {
+        const jumpDistance = bigJump ? 4 : 2;
+        const targetGridX = this.playerPosition.x - dir.x * jumpDistance;
+        const targetGridZ = this.playerPosition.z - dir.z * jumpDistance;
+
+        // Find target block
+        let targetBlock = null;
+        for (const b of this.blocks) {
+          if (Math.abs(b.userData.x - targetGridX) < 0.8 && Math.abs(b.userData.z - targetGridZ) < 0.8) {
+            targetBlock = b;
+            break;
+          }
+        }
+
+        let jumpAllowed = true;
+        
+        if (targetBlock) {
+          const targetHeight = targetBlock.userData.y || 0;
+          const currentHeight = this.playerPosition.y || 0;
+          const heightDiff = targetHeight - currentHeight;
+
+          this.jumpAttempted = true;
+
+          if (heightDiff > 3) {
+            this.lastJumpResult = 'blocked';
+            jumpAllowed = false;
+          } else if (heightDiff > 0 && !bigJump) {
+            // Height diff > 0: need big jump (space) for upward jump
+            this.lastJumpResult = 'blocked';
+            jumpAllowed = false;
+          } else {
+            this.lastJumpResult = 'allowed';
+          }
+        }
+
+        if (jumpAllowed) {
+          this.startJump(dir, targetBlock, bigJump);
+        }
+      }
+
+      onKeyUp(e) {
+        if (e.code === 'Space') {
+          this.spacePressed = false;
+          // Clear pending space if user releases space before jump
+          this.pendingSpace = false;
+          if (this.pendingSpaceTimeout) {
+            clearTimeout(this.pendingSpaceTimeout);
+            this.pendingSpaceTimeout = null;
+          }
+        }
+        // Clear pending direction if user releases direction keys too
+        if (this.directionMap[e.key]) {
+          this.pendingDirection = null;
+          if (this.pendingDirectionTimeout) {
+            clearTimeout(this.pendingDirectionTimeout);
+            this.pendingDirectionTimeout = null;
+          }
+        }
+      }
+
+      startJump(dir, targetBlock, bigJump = false) {
         this.gameState = 'jumping';
         this.audio.playSound('jump');
 
-        // Update player grid position
-        this.playerPosition.x -= dir.x * 2;
-        this.playerPosition.z -= dir.z * 2;
+        const isInPlace = dir.x === 0 && dir.z === 0;
+        this.isInPlaceJump = isInPlace;
+
+        // Jump distance: 4 blocks for big jump (with space), 2 for normal
+        const jumpBlocks = bigJump ? 4 : 2;
+
+        // Update player grid position only if not in place
+        if (!isInPlace) {
+          this.playerPosition.x -= dir.x * jumpBlocks;
+          this.playerPosition.z -= dir.z * jumpBlocks;
+        }
 
         const startTime = performance.now();
-        const worldMoveX = -dir.x * this.blockConfig.width * 2; // Jump 2 blocks
-        const worldMoveZ = -dir.z * this.blockConfig.depth * 2;
+        const worldMoveX = isInPlace ? 0 : (-dir.x * this.blockConfig.width * jumpBlocks);
+        const worldMoveZ = isInPlace ? 0 : (-dir.z * this.blockConfig.depth * jumpBlocks);
 
-        // Calculate target height based on target block
-        const targetHeight = targetBlock ? (targetBlock.userData.y || 0) : this.playerPosition.y || 0;
-        const heightDiff = targetHeight - (this.playerPosition.y || 0);
+        // Calculate target height
+        const targetHeight = isInPlace ? (this.playerPosition.y || 0) : (targetBlock ? (targetBlock.userData.y || 0) : this.playerPosition.y || 0);
         const targetY = this.blockConfig.height * targetHeight + (this.blockConfig.height - this.scaledBottom + 3.1);
         const startY = this.player.position.y;
+        // For in-place jump: go up higher. For big jump: also add extra height.
+        const extraHeight = isInPlace ? 30 : (bigJump ? 20 : 0);
+        const jumpHeight = targetY + extraHeight;
 
         const animate = (now) => {
           const t = Math.min((now - startTime) / this.jumpDuration, 1);
@@ -1227,10 +1464,9 @@
           // Keep player centered on screen, only animate Y (arc)
           this.player.position.x = 0;
           this.player.position.z = 0;
-          // Interpolate Y from startY to targetY based on arc
-          this.player.position.y = startY + (targetY - startY) * arc;
+          this.player.position.y = startY + (jumpHeight - startY) * arc;
 
-          // Move world gradually during animation
+          // Move world gradually during animation only if not in place
           const currentMoveX = worldMoveX * t;
           const currentMoveZ = worldMoveZ * t;
           this.blocks.forEach(b => {
@@ -1273,6 +1509,13 @@
       }
 
       onLand() {
+        // Check if this was an in-place jump
+        if (this.isInPlaceJump) {
+          this.isInPlaceJump = false;
+          this.gameState = 'waiting';
+          return;
+        }
+
         // Check if player landed on a block based on world positions
         const playerWorldX = this.worldOffset.x;
         const playerWorldZ = this.worldOffset.z;
@@ -1354,8 +1597,8 @@
         }
 
         // 初级通关后解锁中级
-        if (this.currentLevel === 20) {
-          for (let i = 21; i <= 35; i++) {
+        if (this.currentLevel === 15) {
+          for (let i = 16; i <= 30; i++) {
             if (!this.unlockedLevels.includes(i)) {
               this.unlockedLevels.push(i);
             }
@@ -1379,15 +1622,18 @@
 
         const dialog = document.createElement('div');
         
-        if (this.currentLevel >= 20) {
+        if (this.currentLevel === 15 || this.currentLevel === 30) {
           dialog.style.cssText = 'background:linear-gradient(135deg, #FFD700 0%, #FFA500 100%);padding:60px 80px;border-radius:30px;text-align:center;box-shadow:0 40px 100px rgba(0,0,0,0.5);font-family:Nunito,sans-serif;max-width:95%;border:5px solid #FFD700;';
         } else {
           dialog.style.cssText = 'background:white;padding:40px 75px;border-radius:20px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.4);font-family:Nunito,sans-serif;max-width:95%;';
         }
 
         const title = document.createElement('h2');
-        if (this.currentLevel >= 20) {
-          title.textContent = '🏆 恭喜完成！🎉';
+        if (this.currentLevel === 15) {
+          title.textContent = '🏆 恭喜进入「中级」！🎉';
+          title.style.cssText = 'font-size:4em;margin:0 0 20px 0;color:#fff;text-shadow:3px 3px 6px rgba(0,0,0,0.3);animation:bounce 1s infinite;';
+        } else if (this.currentLevel === 30) {
+          title.textContent = '� 恭喜通关「全部关卡」！�🎉';
           title.style.cssText = 'font-size:4em;margin:0 0 20px 0;color:#fff;text-shadow:3px 3px 6px rgba(0,0,0,0.3);animation:bounce 1s infinite;';
         } else {
           title.textContent = '🎉 过关！';
@@ -1395,8 +1641,11 @@
         }
 
         const subtitle = document.createElement('h3');
-        if (this.currentLevel >= 20) {
-          subtitle.textContent = '✨ 晋升成「小天才」！✨';
+        if (this.currentLevel === 15) {
+          subtitle.textContent = '✨ 初级完成，挑战中级！✨';
+          subtitle.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.3);';
+        } else if (this.currentLevel === 30) {
+          subtitle.textContent = '✨ 太棒了！你已完成所有关卡！✨';
           subtitle.style.cssText = 'font-size:2.5em;margin:0 0 30px 0;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.3);';
         }
 
@@ -1406,7 +1655,7 @@
 
         const accumulatedPoints = document.createElement('p');
         accumulatedPoints.textContent = `累计积分: ⭐×${this.accumulatedPoints}`;
-        if (this.currentLevel >= 20) {
+        if (this.currentLevel === 15 || this.currentLevel === 30) {
           accumulatedPoints.style.cssText = 'font-size:1.5em;margin:0 0 20px 0;color:#fff;text-shadow:1px 1px 2px rgba(0,0,0,0.3);';
         } else {
           accumulatedPoints.style.cssText = 'font-size:1.25em;margin:0 0 15px 0;color:#666;';
@@ -1414,15 +1663,20 @@
 
         const rewards = document.createElement('p');
         rewards.textContent = `💎 ${this.energyCount}/5  ❤️×${this.lives}  ⚡️×${this.shieldCount}  💰×${this.coinCount}`;
-        if (this.currentLevel >= 20) {
+        if (this.currentLevel === 15 || this.currentLevel === 30) {
           rewards.style.cssText = 'font-size:1.5em;margin:0 0 30px 0;color:#fff;text-shadow:1px 1px 2px rgba(0,0,0,0.3);';
         } else {
           rewards.style.cssText = 'font-size:1.25em;margin:0 0 25px 0;color:#666;';
         }
 
         const btn = document.createElement('button');
-        if (this.currentLevel >= 20) {
-          btn.textContent = '🎮 再来一次';
+        if (this.currentLevel === 15) {
+          btn.textContent = '🎮 进入中级关卡';
+          btn.style.cssText = 'padding:20px 50px;font-size:1.5em;border:none;border-radius:15px;background:#fff;color:#FFA500;cursor:pointer;font-weight:bold;box-shadow:0 5px 20px rgba(0,0,0,0.2);transition:transform 0.2s;';
+          btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
+          btn.onmouseout = () => btn.style.transform = 'scale(1)';
+        } else if (this.currentLevel === 30) {
+          btn.textContent = '🔄 重新开始';
           btn.style.cssText = 'padding:20px 50px;font-size:1.5em;border:none;border-radius:15px;background:#fff;color:#FFA500;cursor:pointer;font-weight:bold;box-shadow:0 5px 20px rgba(0,0,0,0.2);transition:transform 0.2s;';
           btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
           btn.onmouseout = () => btn.style.transform = 'scale(1)';
@@ -1434,10 +1688,12 @@
         const handleNextLevel = () => {
           document.body.removeChild(overlay);
           document.removeEventListener('keydown', handleKeyDown);
-          if (this.currentLevel < 20) {
-            this.loadLevel(this.currentLevel + 1);
-          } else {
+          if (this.currentLevel === 30) {
+            // 第30关结束，重新开始
             this.loadLevel(1);
+          } else if (this.currentLevel < 30) {
+            // 1-29关，进入下一关
+            this.loadLevel(this.currentLevel + 1);
           }
         };
         
@@ -1452,7 +1708,7 @@
         document.addEventListener('keydown', handleKeyDown);
 
         dialog.appendChild(title);
-        if (this.currentLevel >= 20) {
+        if (this.currentLevel === 15 || this.currentLevel === 30) {
           dialog.appendChild(subtitle);
         }
         dialog.appendChild(score);
@@ -1462,7 +1718,7 @@
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
         
-        if (this.currentLevel >= 20) {
+        if (this.currentLevel === 15 || this.currentLevel === 30) {
           this.createGrandCelebration();
         }
       }
@@ -1601,20 +1857,31 @@
         // Animate clouds - each moves at its own speed and direction
         this.clouds.forEach(c => {
           c.position.x += c.userData.speed;
-          // Reset cloud when it goes off the right side, start from left
           if (c.position.x > 150) c.position.x = -150;
         });
 
-        // Animate blocks floating (more visible floating)
+        // Animate blocks floating with custom params
         const time = performance.now() * 0.001;
         this.blocks.forEach(b => {
-          b.position.y = Math.sin(time * 4.5 + b.userData.floatOffset) * 1.2;
+          const baseY = b.userData.baseY;
+          const floatAmplitude = b.userData.floatAmplitude || 0;
+          const floatSpeed = b.userData.floatSpeed || 0;
+          const floatPhase = b.userData.floatPhase || 0;
+          const floatOffset = b.userData.floatOffset || 0;
+          
+          if (floatAmplitude > 0 && floatSpeed > 0) {
+            const floatY = Math.sin(time * floatSpeed + floatOffset + floatPhase) * floatAmplitude * this.blockConfig.height;
+            b.position.y = baseY + floatY;
+          } else {
+            // Default floating for levels 1-15
+            b.position.y = baseY + Math.sin(time * 4.5 + floatOffset) * 1.2;
+          }
+          
           b.children.forEach(c => {
             if (c.userData.isReward) {
               c.rotation.y += 0.02;
-              // Animate reward floating above block - use base position + float offset
-              // base position was set to blockConfig.height + rewardFloatDist = 4.5
-              c.position.y = this.blockConfig.height + this.rewardFloatDist + Math.sin(time * 9 + c.userData.floatOffset) * 0.9;
+              const height = (b.userData.custom && b.userData.custom.height) || this.blockConfig.height;
+              c.position.y = height + this.rewardFloatDist + Math.sin(time * 9 + c.userData.floatOffset) * 0.9;
             }
           });
         });
