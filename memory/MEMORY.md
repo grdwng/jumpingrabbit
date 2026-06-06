@@ -80,7 +80,15 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
   - 等待 Dad 现场截图到 test-results/dad-yellow-bug.png 用 VLM 定位
 
 **仍遗留（真实未做）**:
-- Level 21 块数太少 (8 → 10-15)
+- ~~Level 21 块数太少 (8 → 10-15)~~ → **已调查，决策：不改**
+
+  实际状态（headless 验证 2026-06-06）:
+  - 12 块（在 R085 10-15 范围内）
+  - 11 段转换，10/11 依赖 big jump（dy=+1），1/11 是 normal
+  - 路径单调：z=0 单轴直线，y 0→9 中间 y=4 短暂下降 1
+  - memory 的"8 块"数字是 stale / 记录错
+
+  Dad 决定保留现状（"初见高度差"主题允许高 big-jump 比例）。后续如要改进可考虑加 z 方向 rest 块。
 
 ## 2026-06-06: Level 19 终点不可达修复 ✅
 
