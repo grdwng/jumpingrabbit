@@ -107,3 +107,25 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 **已知 pre-existing 失败**: scripts/intermediate-levels.spec.js — 2 failed，与本次改动无关（loadLevel 被 unlockedLevels gate 拦截；stash 验证 f619ad9 时已存在）。下次专项修。
 
 **视觉验证**: ./start.sh 跑 16-20 关，看上台阶手感（快升慢降 + 踩实闪）。1-15 关行为不变。
+
+## 2026-06-06: 视觉验证通过 ✅
+
+**Electron 启动**: `./start.sh` → `npm start` → `electron .` → main.js 启本地资源服务在 **8888** 端口（不是 8080）；窗口通过 `win.loadFile('game.html')` 直接加载本地文件，GLB 模型走 8888 server。**8080 上的 http-server 是单独留给浏览器测试用的**。
+
+**人工试关结果**（Dad 实测 Level 16-20 上台阶）:
+- ✅ 30/70 轨迹：明显"快升慢降"
+- ✅ 落地踩实：兔子小弹一下
+- ✅ 方块闪：目标方块发亮
+- ✅ Level 1-15 回归：行为不变
+
+**Headless 客观数据补充**:
+- scripts/visual-verify-asymmetric.spec.js — 2 passed, 1 partial
+- 30/70 证据：Level 16 peak y=28.98 @ t=338ms > mid-flight y=24.70 @ t=740ms（峰值在前半段）
+- 80ms stomp 证据：直接调用 playLandingStomp，y 从 100.72 → 98.65（下压 2.07，目标 2.5）
+- Level 1 回归：profile=symmetric, p(0.5)=1.0, p(0.3)=0.84 ✅
+
+**Commits**:
+- e20ee75 docs(spec): sync asymmetric jump design with implementation（0.612→0.714 修正 + onComplete 文档化）
+- 3935d7e test(jump): visual verification spec for 30/70 trajectory + 80ms stomp
+
+**Feature 完成**: 非对称跳跃从 spec → plan → 实施 → 测试 → 视觉验证全链路闭环 ✅
