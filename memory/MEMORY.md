@@ -9,7 +9,7 @@
 - Three.js scene with PerspectiveCamera at (0, 144, 144)
 - Block grid system: 54×7.2×54 units per block
 - Jump: 2 blocks per move (direction × 2)
-- Height system: y=0,1,2 for intermediate levels (21-30)
+- Height system: y=0,1,2 for intermediate levels (16-30)
 - Space+Arrow for upward jump when heightDiff=1
 
 ## Key Systems
@@ -20,7 +20,7 @@
 | **Rewards** | GLB models: crystal, heart, golden |
 | **Characters** | Rabbit (GLB), procedural cat/bear/boy/girl |
 | **Audio** | Web Audio API, 8 sound types |
-| **Levels** | 30 total (1-20 beginner, 21-30 height) |
+| **Levels** | 30 total: 1-15 初级, 16-30 中级（无 31-35） |
 
 ## Game State
 
