@@ -65,6 +65,23 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - 黄色线条 bug (R135 任务 6) — 未做
 - 21-30 整体优化 — 范围外
 
+## 2026-06-06: R135 进度更新（Dad 确认）
+
+**已完成**（Dad 实测无问题）:
+- ✅ blocks 阴影 (R135 任务 4)
+- ✅ 兔子落点 (R135 任务 3)
+- ✅ 黄色线条 bug (R135 任务 6) → 升级为"黄色线团"bug 调查中（见下）
+
+**仍在查**:
+- 🔍 "黄色线团" bug（屏幕中心，一团乱糟糟线条/圈圈，偶尔出现 1-2 秒自动消失）
+  - Headless 3D 场景扫描 (level 15-20): 0 transient yellow, 12 永久 golden 奖励 mesh
+  - DOM 元素扫描: 0 yellow
+  - 3D 时序扫描 (T+0/50/200/400/800/1500ms): 0 transient
+  - 等待 Dad 现场截图到 test-results/dad-yellow-bug.png 用 VLM 定位
+
+**仍遗留（真实未做）**:
+- Level 21 块数太少 (8 → 10-15)
+
 ## 2026-06-06: 非对称跳跃设计完成 ✅
 
 **范围**: 16-30 关卡（中级），仅 heightDiff=1 的上台阶跳
