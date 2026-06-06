@@ -152,7 +152,11 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - 回归 4 个（level 1/30/31 + heightDiff=0）
 
 **回归**: scripts/height-jump.spec.js — 3 passed ✅
-**已知 pre-existing 失败**: scripts/intermediate-levels.spec.js — 2 failed，与本次改动无关（loadLevel 被 unlockedLevels gate 拦截；stash 验证 f619ad9 时已存在）。下次专项修。
+**已删除**: scripts/intermediate-levels.spec.js (2026-06-06) — 原 2 failed:
+  - Test 1 期望 21-35 有 15 关，实际只有 21-30 共 10 关（31-35 从未实现）
+  - Test 2 调用 `loadLevel(21)` 被 unlockedLevels gate 静默拦截，blocks 停留在 level 1 数据
+  - 与 asymmetric jump 改动无关（f619ad9 时已 pre-existing）
+  - Dad 决策：直接删除文件，不保留
 
 **视觉验证**: ./start.sh 跑 16-20 关，看上台阶手感（快升慢降 + 踩实闪）。1-15 关行为不变。
 
