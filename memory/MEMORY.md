@@ -9,7 +9,7 @@
 - Three.js scene with PerspectiveCamera at (0, 144, 144)
 - Block grid system: 54×7.2×54 units per block
 - Jump: 2 blocks per move (direction × 2)
-- Height system: y=0,1,2 for intermediate levels (21-35)
+- Height system: y=0,1,2 for intermediate levels (21-30)
 - Space+Arrow for upward jump when heightDiff=1
 
 ## Key Systems
@@ -20,7 +20,7 @@
 | **Rewards** | GLB models: crystal, heart, golden |
 | **Characters** | Rabbit (GLB), procedural cat/bear/boy/girl |
 | **Audio** | Web Audio API, 8 sound types |
-| **Levels** | 35 total (1-20 beginner, 21-35 height) |
+| **Levels** | 30 total (1-20 beginner, 21-30 height) |
 
 ## Game State
 
@@ -153,7 +153,7 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 
 **回归**: scripts/height-jump.spec.js — 3 passed ✅
 **已删除**: scripts/intermediate-levels.spec.js (2026-06-06) — 原 2 failed:
-  - Test 1 期望 21-35 有 15 关，实际只有 21-30 共 10 关（31-35 从未实现）
+  - Test 1 期望 21-35 有 15 关，实际 1-30 共 30 关（无 31-35，测试期望本身就错）
   - Test 2 调用 `loadLevel(21)` 被 unlockedLevels gate 静默拦截，blocks 停留在 level 1 数据
   - 与 asymmetric jump 改动无关（f619ad9 时已 pre-existing）
   - Dad 决策：直接删除文件，不保留
