@@ -116,11 +116,12 @@ playLandingStomp(targetBlock, targetY, onComplete) {
     if (t < 1) {
       requestAnimationFrame(animate);
     } else {
-      // 收尾：玩家 y 归位 + emissive 恢复
+      // 收尾：玩家 y 归位 + emissive 恢复 + 调 onComplete
       this.player.position.y = targetY;
       if (origEmissive !== null && targetBlock.material.emissive) {
         targetBlock.material.emissive.setHex(origEmissive);
       }
+      if (onComplete) onComplete();
     }
   };
   requestAnimationFrame(animate);
@@ -157,13 +158,14 @@ const profile = (bigJump && heightDiff > 0 && isIntermediateLevel)
 const parabola = this.jumpTrajectory(t, profile);
 ```
 
-**改动 C**：动画结束的 `else` 分支（`t >= 1`），在 `onLand()` 之前加 stomp 触发：
+**改动 C**：动画结束的 `else` 分支（`t >= 1`），stomp 路径把 `onLand` 作为 `onComplete` 回调传进去（保证 80ms stomp 窗口期间 `gameState='jumping'` 锁不被释放）：
 
 ```js
 if (profile === 'asymmetric' && targetBlock && !isInPlace) {
-  this.playLandingStomp(targetBlock, targetY);
+  this.playLandingStomp(targetBlock, targetY, () => this.onLand());
+} else {
+  this.onLand();
 }
-this.onLand();
 ```
 
 ---
@@ -188,13 +190,14 @@ startJump(dir, targetBlock, bigJump=true)
        else:
          player.position.set(0, targetY, 0)
          if (profile === 'asymmetric' && targetBlock) {
-           this.playLandingStomp(targetBlock, targetY)
+           this.playLandingStomp(targetBlock, targetY, () => onLand())  // onComplete = onLand
+         } else {
+           onLand()
          }
-         onLand()
 ```
 
 stomp 是独立 raf 循环；与 `startJump` 内的 raf 互不干扰。
-两者结束时各自清理：startJump 自然结束 → 进入 onLand → gameState = 'waiting'；stomp 自然结束 → 玩家 y 归位 + emissive 恢复。
+两者结束时各自清理：stomp 自然结束 → 玩家 y 归位 + emissive 恢复 + 调用 `onLand` → `gameState = 'waiting'`；非 stomp 路径立即调 `onLand`。
 
 ---
 
@@ -220,7 +223,7 @@ stomp 是独立 raf 循环；与 `startJump` 内的 raf 互不干扰。
 |------|------|
 | `jumpTrajectory(0, 'asymmetric')` | 0 |
 | `jumpTrajectory(0.3, 'asymmetric')` | 1（峰值）|
-| `jumpTrajectory(0.5, 'asymmetric')` | ≈ 0.612 |
+| `jumpTrajectory(0.5, 'asymmetric')` | ≈ 0.714 |
 | `jumpTrajectory(1, 'asymmetric')` | 0 |
 | `jumpTrajectory(0.5, 'symmetric')` | 1（原峰值）|
 | `jumpTrajectory` 多次调用无副作用 | 状态不变（纯函数）|
