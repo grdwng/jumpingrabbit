@@ -1440,6 +1440,54 @@
         return 4 * t * (1 - t);
       }
 
+      /**
+       * Plays a 80ms "landing stomp" animation: rabbit y micro-bounce + target block emissive flash.
+       * Does NOT change gameState (player input remains blocked by parent 'jumping' state).
+       * @param {THREE.Object3D|null} targetBlock - landing block (null = skip emissive flash)
+       * @param {number} targetY - baseline y to bounce around (not the current player y)
+       */
+      playLandingStomp(targetBlock, targetY) {
+        const STOMP_DURATION = 80;
+        const DIP = 2.5;
+        const REBOUND = 0.9;
+        const stompStart = performance.now();
+
+        const origEmissive = (targetBlock && targetBlock.material && targetBlock.material.emissive)
+          ? targetBlock.material.emissive.getHex()
+          : null;
+
+        const animate = (now) => {
+          const t = Math.min((now - stompStart) / STOMP_DURATION, 1);
+
+          // Micro-bounce: 0 -> -DIP (at t=0.5) -> +REBOUND (at t=1)
+          let offset;
+          if (t < 0.5) {
+            offset = -DIP * (t / 0.5);
+          } else {
+            const s = (t - 0.5) / 0.5;
+            offset = -DIP + (REBOUND + DIP) * s;
+          }
+          this.player.position.y = targetY + offset;
+
+          // Block emissive flash: white intensity 0.6 -> 0
+          if (targetBlock && targetBlock.material && targetBlock.material.emissive) {
+            const intensity = 0.6 * (1 - t);
+            targetBlock.material.emissive.setRGB(intensity, intensity, intensity);
+          }
+
+          if (t < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            // Cleanup: snap y to baseline, restore emissive
+            this.player.position.y = targetY;
+            if (origEmissive !== null && targetBlock.material.emissive) {
+              targetBlock.material.emissive.setHex(origEmissive);
+            }
+          }
+        };
+        requestAnimationFrame(animate);
+      }
+
       startJump(dir, targetBlock, bigJump = false) {
         this.gameState = 'jumping';
         this.audio.playSound('jump');

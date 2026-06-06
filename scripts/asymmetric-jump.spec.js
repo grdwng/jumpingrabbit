@@ -53,3 +53,30 @@ test('jumpTrajectory is a pure function (call twice, same result)', async ({ pag
   });
   expect(results[0]).toBe(results[1]);
 });
+
+test('playLandingStomp does not throw when targetBlock is null', async ({ page }) => {
+  await page.goto('http://localhost:8080/game.html');
+  await page.waitForTimeout(2000);
+  const error = await page.evaluate(() => {
+    try {
+      window.game.playLandingStomp(null, 100);
+      return null;
+    } catch (e) {
+      return e.message;
+    }
+  });
+  expect(error).toBeNull();
+});
+
+test('playLandingStomp applies stomp offset based on targetY baseline (not current y)', async ({ page }) => {
+  await page.goto('http://localhost:8080/game.html');
+  await page.waitForTimeout(2000);
+  const result = await page.evaluate(async () => {
+    const targetY = 150;
+    window.game.player.position.y = targetY;
+    window.game.playLandingStomp(null, targetY);
+    await new Promise(r => setTimeout(r, 200));
+    return window.game.player.position.y;
+  });
+  expect(result).toBeCloseTo(150, 0);
+});
