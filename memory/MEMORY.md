@@ -82,6 +82,29 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 **仍遗留（真实未做）**:
 - Level 21 块数太少 (8 → 10-15)
 
+## 2026-06-06: Level 19 终点不可达修复 ✅
+
+**症状**: Dad 报告 level 19 终点方块"不连续"——无法用方向键一步步跳过去。
+
+**根因**（headless 验证）:
+- 倒数第 2 块 `(14, y=2, z=2)`
+- 终点 `(16, y=1, z=0)`
+- Δ = (x:+2, y:-1, z:-2) — 单次方向键只能改一个轴，不可能同时改 x 和 z
+- 4 向无对角键，无法一次跳到
+
+**修复**: 在 `(14,2,2)` 和 `(16,1,0)` 之间插入桥接方块 `(14, y=1, z=0)` (color 0xE91E63 pink)
+- (14,2,2) → (14,1,0): ArrowUp, Δz=-2, heightDiff=-1, **普通跳** ✓
+- (14,1,0) → (16,1,0): ArrowRight, Δx=+2, heightDiff=0, **普通跳** ✓
+
+**测试**: `scripts/level19-path-reachability.spec.js` ✅ 1 passed
+- 12/12 transitions 单轴可达
+- 所有 12 段都是 normal jump（不依赖 big jump）
+- 满足 Dad 要求"普通的一步步跳过去是基本的方式必须存在"
+
+**改动范围**: `game.html` 第 962 行加 1 行，blocks 12 → 13（仍符合 R085 10-15 范围）
+
+**注意**: 修复后 level 19 blocks 顺序的"权威定义"在 `game.html` 而非 spec 文件；测试通过 `window.game.levels` 读运行时数据，避免硬编码漂移。
+
 ## 2026-06-06: 非对称跳跃设计完成 ✅
 
 **范围**: 16-30 关卡（中级），仅 heightDiff=1 的上台阶跳
