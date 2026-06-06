@@ -70,20 +70,21 @@ jumpTrajectory(t, profile) {
 | 0.0 | 0.000 | 0.000 |
 | 0.15 | 0.510 | 1.000（爬升峰值）|
 | 0.30 | 0.840 | 1.000（峰值切换点）|
-| 0.50 | 1.000 | 0.612 |
-| 0.65 | 0.910 | 0.880 |
+| 0.50 | 1.000 | 0.714 |
+| 0.65 | 0.910 | 0.500 |
 | 1.00 | 0.000 | 0.000 |
 
-爬升段用 0-1 抛物线，下降段也用 0-1 抛物线（拼接后在 t=0.3 处一阶连续但**二阶不连续** — 这是 30/70 非对称的本质）。
+爬升段用 0-1 线性插值（piecewise linear），下降段也用 0-1 线性插值（拼接后在 t=0.3 处一阶连续但**二阶不连续** — 这是 30/70 非对称的本质）。
 
-### 3.2 `playLandingStomp(targetBlock, targetY)` 方法
+### 3.2 `playLandingStomp(targetBlock, targetY, onComplete)` 方法
 
 **位置**：`Game` class 新增方法。
 **职责**：上台阶落地后 80ms 二级动画。
 **不改 `gameState`** — 仅动 `player.position.y` 临时偏移和 `targetBlock.material.emissive` 临时闪烁。
+**回调**：`onComplete`（可选）在动画收尾完成后被调用一次（y 归位 + emissive 恢复之后）。`startJump` 传入 `() => this.onLand()` 来延迟释放 `gameState='jumping'` 锁，保证 80ms stomp 窗口期间玩家输入被拦截。
 
 ```js
-playLandingStomp(targetBlock, targetY) {
+playLandingStomp(targetBlock, targetY, onComplete) {
   const STOMP_DURATION = 80;            // ms
   const DIP = 2.5;                      // 下压幅度（世界单位）
   const REBOUND = 0.9;                  // 回弹终值
@@ -205,7 +206,7 @@ stomp 是独立 raf 循环；与 `startJump` 内的 raf 互不干扰。
 | `targetBlock.material.emissive` 不存在 | `if (targetBlock && ... && material.emissive)` 守卫，恢复分支同样守卫 |
 | 关卡 1-15 或 31+ | profile = 'symmetric'，行为完全等同现状 |
 | `currentLevel` 字段缺失或为 undefined | 实施时验证字段名；若缺失则用 `this.currentLevel || 1` fallback |
-| 玩家在 stomp 期间按键 | `gameState === 'jumping'` 仍为 true（stomp 不改 gameState），输入被拦截 80ms；按用户偏好可后续加 `stompActive` 标志，本次不做 |
+| 玩家在 stomp 期间按键 | `onLand()` 推迟到 stomp 完成后才调用，所以 `gameState === 'jumping'` 持续整个 80ms 期间，`executeJump` 被拦截，不会触发新 `startJump` — 安全 |
 | 多次起跳导致 stomp 重叠 | executeJump 被 `gameState === 'jumping'` 拦截，stomp 期间不会触发新 startJump — 安全 |
 | 玩家在微弹过程中 y 被外力改了 | 不会发生：stomp 是唯一改 player.y 的路径，期间 gameState='jumping' 阻塞一切输入 |
 
