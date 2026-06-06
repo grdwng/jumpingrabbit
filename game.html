@@ -1505,6 +1505,18 @@
         }
 
         const startTime = performance.now();
+
+        // Profile selection: asymmetric only for upward jump in intermediate levels 16-30
+        const currentHeight = this.playerPosition.y || 0;
+        const targetHeightCalc = isInPlace
+          ? currentHeight
+          : (targetBlock ? (targetBlock.userData.y || 0) : currentHeight);
+        const heightDiff = targetHeightCalc - currentHeight;
+        const isIntermediateLevel = this.currentLevel >= 16 && this.currentLevel <= 30;
+        const profile = (bigJump && heightDiff > 0 && isIntermediateLevel)
+          ? 'asymmetric'
+          : 'symmetric';
+
         const worldMoveX = isInPlace ? 0 : (-dir.x * this.blockConfig.width * jumpBlocks);
         const worldMoveZ = isInPlace ? 0 : (-dir.z * this.blockConfig.depth * jumpBlocks);
 
@@ -1519,9 +1531,8 @@
         const animate = (now) => {
           const t = Math.min((now - startTime) / this.jumpDuration, 1);
           
-          // Pure parabolic jump trajectory: 4*t*(1-t) creates a perfect parabola
-          // that peaks at t=0.5 with value 1
-          const parabola = 4 * t * (1 - t);
+          // Trajectory: symmetric (50/50) by default; asymmetric (30/70) for upward jumps in levels 16-30
+          const parabola = this.jumpTrajectory(t, profile);
 
           // Keep player centered on screen, animate Y with parabolic arc
           this.player.position.x = 0;
@@ -1587,6 +1598,11 @@
             this.player.position.set(0, targetY, 0);
             this.player.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
             this.player.scale.set(baseScale, baseScale, baseScale);
+
+            // Trigger landing stomp for asymmetric upward jumps (excludes in-place jumps)
+            if (profile === 'asymmetric' && targetBlock && !isInPlace) {
+              this.playLandingStomp(targetBlock, targetY);
+            }
             this.onLand();
           }
         };
