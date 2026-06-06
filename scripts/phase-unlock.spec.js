@@ -1,3 +1,5 @@
+import { test, expect } from '@playwright/test';
+
 test('通关初级20关后中级解锁', async ({ page }) => {
   await page.goto('http://localhost:8080/game.html');
   await page.waitForTimeout(2000);

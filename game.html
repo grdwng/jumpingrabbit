@@ -238,12 +238,23 @@
         sun.shadow.mapSize.width = 2048;
         sun.shadow.mapSize.height = 2048;
         sun.shadow.camera.near = 0.5;
-        sun.shadow.camera.far = 100;
-        sun.shadow.camera.left = -20;
-        sun.shadow.camera.right = 20;
-        sun.shadow.camera.top = 20;
-        sun.shadow.camera.bottom = -20;
+        sun.shadow.camera.far = 200;
+        sun.shadow.camera.left = -200;
+        sun.shadow.camera.right = 200;
+        sun.shadow.camera.top = 200;
+        sun.shadow.camera.bottom = -200;
         this.scene.add(sun);
+        this.sunLight = sun;
+
+        // Ground plane for shadows (invisible, only receives shadows)
+        const groundGeo = new THREE.PlaneGeometry(400, 400);
+        const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -10;
+        ground.receiveShadow = true;
+        this.scene.add(ground);
+        this.groundPlane = ground;
 
         // Background elements - floating clouds
         // Initialize clouds array BEFORE createClouds() since it uses .push()
@@ -338,73 +349,16 @@
         this.levels = this.createLevels();
         this.currentLevel = 1;
 
-        // Create procedural models as fallback
+        // Create procedural models - use procedural rabbit exclusively
         this.characters = this.createCharacterModels();
         this.currentCharacterType = 'rabbit';
         this.player = this.characters.rabbit.clone();
         this.player.scale.set(18, 18, 18); // 18x scale (50% of 36x)
+        this.baseScale = 18; // Store base scale for jump animations
         // Position procedural rabbit on top of block using cached baseY
         this.player.position.set(0, this.baseY, 0);
+        this.scaledBottom = 0; // Procedural rabbit bottom is at y=0
         this.scene.add(this.player);
-
-        // Try to load the GLB rabbit model
-        const gltfLoader = new GLTFLoader();
-        gltfLoader.load(
-          basePath + 'cute_rabbit.glb',
-          (gltf) => {
-            // Success - use loaded model
-            const rabbitModel = gltf.scene;
-
-            // Get bounding box to find model dimensions
-            const box = new THREE.Box3().setFromObject(rabbitModel);
-            const modelHeight = box.max.y - box.min.y;
-            const modelWidth = box.max.x - box.min.x;
-            const modelDepth = box.max.z - box.min.z;
-            const modelCenterX = (box.max.x + box.min.x) / 2;
-            const modelCenterZ = (box.max.z + box.min.z) / 2;
-
-            // Scale to match block size
-            // Block is 54 cube, rabbit should be: height=54 (1x), width/depth=54 (100%)
-            const targetHeight = 18 * 3; // 54
-            const targetWidthDepth = 18; // 100% of block
-            const scaleY = targetHeight / modelHeight;
-            const scaleXZ = targetWidthDepth / Math.max(modelWidth, modelDepth);
-            // Increase thickness (Z-axis) by 20% to make rabbit less flat
-            rabbitModel.scale.set(scaleXZ, scaleY, scaleXZ * 1.2);
-
-            // Re-calculate box after scaling
-            const scaledBox = new THREE.Box3().setFromObject(rabbitModel);
-            const scaledBottom = scaledBox.min.y;
-            this.scaledBottom = scaledBottom;
-            this.baseY = this.blockConfig.height - scaledBottom + 3.1;
-            const scaledCenterX = (scaledBox.max.x + scaledBox.min.x) / 2;
-            const scaledCenterZ = (scaledBox.max.z + scaledBox.min.z) / 2;
-
-            rabbitModel.traverse((child) => {
-              if (child.isMesh) {
-                child.castShadow = true;
-              }
-            });
-
-            // Replace procedural rabbit with loaded one
-            this.scene.remove(this.player);
-            this.player = rabbitModel.clone();
-
-            // Position so bottom of model sits on block top
-            // Block top is at y = blockConfig.height = 7.2
-            this.player.position.set(0, this.blockConfig.height - scaledBottom + 3.1, 0);
-
-            this.scene.add(this.player);
-            this.characters.rabbit = rabbitModel;
-            console.log('GLB rabbit loaded, scaleY:', scaleY, 'scaleXZ:', scaleXZ, 'bottom:', scaledBottom);
-          },
-          undefined,
-          (error) => {
-            console.log('Using procedural rabbit (GLB load failed):', error);
-            // For procedural rabbit, bottom is at y=0 (feet on ground)
-            this.scaledBottom = 0;
-          }
-        );
 
         // Store procedural models for other characters
         const proceduralModels = this.createCharacterModels();
@@ -429,11 +383,13 @@
           level: document.getElementById('level')
         };
 
-        this.loadLevel(1);
-        this.animate();
-
-        // Start preloading reward models
+        // Preload reward models BEFORE loading level so they're available when blocks are created
         this.modelsLoadingPromise = this.loadAllRewardModels();
+        this.modelsLoadingPromise.then(() => {
+          this.loadLevel(1);
+        });
+
+        this.animate();
       }
 
       // Promise-based reward model preloader
@@ -519,149 +475,189 @@
       createCharacterModels() {
         const models = {};
 
-        // Enhanced cute rabbit - similar to cute_rabbit.glb style
+        // Enhanced cute rabbit - optimized for cute_rabbit.glb style
         const rabbit = new THREE.Group();
 
-        // Body - soft round shape
-        const rabbitBodyGeo = new THREE.SphereGeometry(0.5, 20, 20);
-        const rabbitMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        // Body - soft round shape with beige color like cute_rabbit.glb
+        const rabbitBodyGeo = new THREE.SphereGeometry(0.55, 24, 24);
+        const rabbitMat = new THREE.MeshPhysicalMaterial({ 
+          color: 0xFFFEF9, 
+          roughness: 0.2, 
+          metalness: 0.02,
+          clearcoat: 0.3,
+          clearcoatRoughness: 0.15,
+          emissive: 0xFFFFF8,
+          emissiveIntensity: 0.1
+        });
         const rabbitBody = new THREE.Mesh(rabbitBodyGeo, rabbitMat);
-        rabbitBody.position.y = 0.5;
-        rabbitBody.scale.set(1, 1.1, 0.95);
+        rabbitBody.position.y = 0.6;
+        rabbitBody.scale.set(1.05, 1.27, 1.0);
         rabbitBody.castShadow = true;
+        rabbitBody.receiveShadow = true;
         rabbit.add(rabbitBody);
 
-        // Belly patch - slightly pink
-        const bellyGeo = new THREE.SphereGeometry(0.3, 16, 16);
-        const bellyMat = new THREE.MeshLambertMaterial({ color: 0xFFE4E8 });
+        // Belly patch - soft pink like cute_rabbit.glb
+        const bellyGeo = new THREE.SphereGeometry(0.35, 16, 16);
+        const bellyMat = new THREE.MeshPhysicalMaterial({ 
+          color: 0xFFD4DE, 
+          roughness: 0.2,
+          metalness: 0.02
+        });
         const belly = new THREE.Mesh(bellyGeo, bellyMat);
-        belly.position.set(0, 0.45, 0.25);
-        belly.scale.set(1, 0.8, 0.5);
+        belly.position.set(0, 0.5, 0.3);
+        belly.scale.set(1.1, 1.0, 0.6);
+        belly.castShadow = true;
         rabbit.add(belly);
 
         // Head - bigger relative to body for cuteness
-        const rabbitHeadGeo = new THREE.SphereGeometry(0.42, 20, 20);
+        const rabbitHeadGeo = new THREE.SphereGeometry(0.48, 24, 24);
         const rabbitHead = new THREE.Mesh(rabbitHeadGeo, rabbitMat);
-        rabbitHead.position.y = 1.15;
-        rabbitHead.scale.set(1, 0.95, 1);
+        rabbitHead.position.y = 1.38;
+        rabbitHead.scale.set(1.05, 1.0, 1.05);
         rabbitHead.castShadow = true;
+        rabbitHead.receiveShadow = true;
         rabbit.add(rabbitHead);
 
         // Eyes - large cute black eyes with highlight
-        const eyeGeo = new THREE.SphereGeometry(0.1, 16, 16);
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1A1A1A });
-        const eyeHighlightGeo = new THREE.SphereGeometry(0.03, 8, 8);
+        const eyeGeo = new THREE.SphereGeometry(0.11, 16, 16);
+        const eyeMat = new THREE.MeshPhysicalMaterial({ color: 0x1A1A1A, roughness: 0.1 });
+        const eyeHighlightGeo = new THREE.SphereGeometry(0.04, 8, 8);
         const eyeHighlightMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
 
         // Left eye
         const rabbitEyeL = new THREE.Mesh(eyeGeo, eyeMat);
-        rabbitEyeL.position.set(-0.15, 1.2, 0.35);
+        rabbitEyeL.position.set(-0.18, 1.4, 0.38);
+        rabbitEyeL.castShadow = true;
         rabbit.add(rabbitEyeL);
         const eyeHighlightL = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
-        eyeHighlightL.position.set(-0.12, 1.23, 0.42);
+        eyeHighlightL.position.set(-0.14, 1.43, 0.44);
         rabbit.add(eyeHighlightL);
 
         // Right eye
         const rabbitEyeR = new THREE.Mesh(eyeGeo, eyeMat);
-        rabbitEyeR.position.set(0.15, 1.2, 0.35);
+        rabbitEyeR.position.set(0.18, 1.4, 0.38);
+        rabbitEyeR.castShadow = true;
         rabbit.add(rabbitEyeR);
         const eyeHighlightR = new THREE.Mesh(eyeHighlightGeo, eyeHighlightMat);
-        eyeHighlightR.position.set(0.18, 1.23, 0.42);
+        eyeHighlightR.position.set(0.22, 1.43, 0.44);
         rabbit.add(eyeHighlightR);
 
         // Cute nose - pink oval
-        const noseGeo = new THREE.SphereGeometry(0.06, 12, 12);
-        noseGeo.scale(1, 0.7, 0.6);
-        const noseMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+        const noseGeo = new THREE.SphereGeometry(0.07, 12, 12);
+        noseGeo.scale(1, 0.6, 0.5);
+        const noseMat = new THREE.MeshPhysicalMaterial({ color: 0xFF91A4, roughness: 0.1 });
         const nose = new THREE.Mesh(noseGeo, noseMat);
-        nose.position.set(0, 1.08, 0.4);
+        nose.position.set(0, 1.27, 0.42);
+        nose.castShadow = true;
         rabbit.add(nose);
 
         // Mouth - tiny smile lines
-        const mouthGeo = new THREE.BoxGeometry(0.08, 0.02, 0.01);
-        const mouthMat = new THREE.MeshBasicMaterial({ color: 0xFF69B4 });
+        const mouthGeo = new THREE.BoxGeometry(0.09, 0.02, 0.01);
+        const mouthMat = new THREE.MeshPhysicalMaterial({ color: 0xFF7BAC, roughness: 0.1 });
         const mouthL = new THREE.Mesh(mouthGeo, mouthMat);
-        mouthL.position.set(-0.04, 1.02, 0.42);
+        mouthL.position.set(-0.04, 1.2, 0.43);
         mouthL.rotation.z = 0.3;
         rabbit.add(mouthL);
         const mouthR = new THREE.Mesh(mouthGeo, mouthMat);
-        mouthR.position.set(0.04, 1.02, 0.42);
+        mouthR.position.set(0.04, 1.2, 0.43);
         mouthR.rotation.z = -0.3;
         rabbit.add(mouthR);
 
-        // Cheeks - pink blush circles
-        const cheekGeo = new THREE.SphereGeometry(0.08, 12, 12);
-        const cheekMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1, transparent: true, opacity: 0.5 });
+        // Cheeks - pink blush circles (more prominent)
+        const cheekGeo = new THREE.SphereGeometry(0.1, 12, 12);
+        const cheekMat = new THREE.MeshPhysicalMaterial({ 
+          color: 0xFFB6C1, 
+          transparent: true, 
+          opacity: 0.6,
+          roughness: 0.2
+        });
         const cheekL = new THREE.Mesh(cheekGeo, cheekMat);
-        cheekL.position.set(-0.28, 1.1, 0.28);
-        cheekL.scale.set(1, 0.6, 0.3);
+        cheekL.position.set(-0.32, 1.27, 0.3);
+        cheekL.scale.set(1.1, 0.7, 0.4);
         rabbit.add(cheekL);
         const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
-        cheekR.position.set(0.28, 1.1, 0.28);
-        cheekR.scale.set(1, 0.6, 0.3);
+        cheekR.position.set(0.32, 1.27, 0.3);
+        cheekR.scale.set(1.1, 0.7, 0.4);
         rabbit.add(cheekR);
 
         // Ears - long and cute with inner ear pink
-        const earGeo = new THREE.CapsuleGeometry(0.1, 0.7, 8, 16);
-        const earMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
-        const earInnerGeo = new THREE.CapsuleGeometry(0.05, 0.5, 8, 16);
-        const earInnerMat = new THREE.MeshLambertMaterial({ color: 0xFFB6C1 });
+        const earGeo = new THREE.CapsuleGeometry(0.11, 0.75, 8, 16);
+        const earInnerGeo = new THREE.CapsuleGeometry(0.06, 0.55, 8, 16);
+        const earInnerMat = new THREE.MeshPhysicalMaterial({ color: 0xFFB6C1, roughness: 0.15 });
 
         // Left ear
-        const rabbitEarL = new THREE.Mesh(earGeo, earMat);
-        rabbitEarL.position.set(-0.18, 1.75, -0.05);
-        rabbitEarL.rotation.z = -0.15;
-        rabbitEarL.rotation.x = 0.1;
+        const rabbitEarL = new THREE.Mesh(earGeo, rabbitMat);
+        rabbitEarL.position.set(-0.22, 1.98, -0.05);
+        rabbitEarL.rotation.z = -0.18;
+        rabbitEarL.rotation.x = 0.12;
         rabbitEarL.castShadow = true;
         rabbit.add(rabbitEarL);
         const earInnerL = new THREE.Mesh(earInnerGeo, earInnerMat);
-        earInnerL.position.set(-0.18, 1.75, 0.02);
-        earInnerL.rotation.z = -0.15;
-        earInnerL.rotation.x = 0.1;
+        earInnerL.position.set(-0.22, 1.98, 0.03);
+        earInnerL.rotation.z = -0.18;
+        earInnerL.rotation.x = 0.12;
         rabbit.add(earInnerL);
 
         // Right ear
-        const rabbitEarR = new THREE.Mesh(earGeo, earMat);
-        rabbitEarR.position.set(0.18, 1.75, -0.05);
-        rabbitEarR.rotation.z = 0.15;
-        rabbitEarR.rotation.x = 0.1;
+        const rabbitEarR = new THREE.Mesh(earGeo, rabbitMat);
+        rabbitEarR.position.set(0.22, 1.98, -0.05);
+        rabbitEarR.rotation.z = 0.18;
+        rabbitEarR.rotation.x = 0.12;
         rabbitEarR.castShadow = true;
         rabbit.add(rabbitEarR);
         const earInnerR = new THREE.Mesh(earInnerGeo, earInnerMat);
-        earInnerR.position.set(0.18, 1.75, 0.02);
-        earInnerR.rotation.z = 0.15;
-        earInnerR.rotation.x = 0.1;
+        earInnerR.position.set(0.22, 1.98, 0.03);
+        earInnerR.rotation.z = 0.18;
+        earInnerR.rotation.x = 0.12;
         rabbit.add(earInnerR);
 
         // Tiny front teeth
-        const toothGeo = new THREE.BoxGeometry(0.06, 0.08, 0.04);
-        const toothMat = new THREE.MeshLambertMaterial({ color: 0xFFFFEE });
+        const toothGeo = new THREE.BoxGeometry(0.07, 0.09, 0.05);
+        const toothMat = new THREE.MeshPhysicalMaterial({ color: 0xFFFFF0, roughness: 0.1 });
         const toothL = new THREE.Mesh(toothGeo, toothMat);
-        toothL.position.set(-0.03, 0.98, 0.4);
+        toothL.position.set(-0.03, 1.17, 0.42);
+        toothL.castShadow = true;
         rabbit.add(toothL);
         const toothR = new THREE.Mesh(toothGeo, toothMat);
-        toothR.position.set(0.03, 0.98, 0.4);
+        toothR.position.set(0.03, 1.17, 0.42);
+        toothR.castShadow = true;
         rabbit.add(toothR);
 
-        // Fluffy tail - small white ball
-        const tailGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        // Fluffy tail - small beige ball
+        const tailGeo = new THREE.SphereGeometry(0.14, 16, 16);
         const tail = new THREE.Mesh(tailGeo, rabbitMat);
-        tail.position.set(0, 0.5, -0.45);
+        tail.position.set(0, 0.62, -0.5);
         tail.castShadow = true;
         rabbit.add(tail);
 
-        // Little front paws
-        const pawGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        // Little front paws with pink paw pads
+        const pawGeo = new THREE.SphereGeometry(0.13, 12, 12);
+        const pawPadGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        const pawPadMat = new THREE.MeshPhysicalMaterial({ color: 0xFFB6C1, roughness: 0.15 });
+        
+        // Left paw
         const pawL = new THREE.Mesh(pawGeo, rabbitMat);
-        pawL.position.set(-0.25, 0.15, 0.2);
-        pawL.scale.set(1, 0.6, 1.2);
+        pawL.position.set(-0.28, 0.25, 0.25);
+        pawL.scale.set(1.1, 0.7, 1.3);
         pawL.castShadow = true;
         rabbit.add(pawL);
+        // Left paw pad
+        const pawPadL = new THREE.Mesh(pawPadGeo, pawPadMat);
+        pawPadL.position.set(-0.28, 0.22, 0.35);
+        pawPadL.scale.set(1, 0.5, 0.8);
+        rabbit.add(pawPadL);
+        
+        // Right paw
         const pawR = new THREE.Mesh(pawGeo, rabbitMat);
-        pawR.position.set(0.25, 0.15, 0.2);
-        pawR.scale.set(1, 0.6, 1.2);
+        pawR.position.set(0.28, 0.25, 0.25);
+        pawR.scale.set(1.1, 0.7, 1.3);
         pawR.castShadow = true;
         rabbit.add(pawR);
+        // Right paw pad
+        const pawPadR = new THREE.Mesh(pawPadGeo, pawPadMat);
+        pawPadR.position.set(0.28, 0.22, 0.35);
+        pawPadR.scale.set(1, 0.5, 0.8);
+        rabbit.add(pawPadR);
 
         // Whiskers
         const whiskerGeo = new THREE.BoxGeometry(0.15, 0.008, 0.008);
@@ -921,7 +917,7 @@
             {x:12,y:8,z:0,type:'normal',reward:assignReward(),custom:{width:50,floatAmplitude:1.5,floatSpeed:2.0,opacity:0.9,color:0xE74C3C}},
             {x:12,y:9,z:2,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:1.4,floatSpeed:2.2,opacity:0.95,color:0x3498DB}},
             {x:14,y:10,z:2,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:1.5,floatSpeed:2.0,opacity:0.98,color:0xF39C12}},
-            {x:16,y:11,z:2,type:'end',reward:assignReward(),custom:{width:55,floatAmplitude:1.9,floatSpeed:1.6,color:0x27AE60}}
+            {x:16,y:11,z:2,type:'end',custom:{width:55,floatAmplitude:1.9,floatSpeed:1.6,color:0x27AE60}}
           ]},
           { id: 17, name: "三角高地", blocks: [
             {x:0,y:0,z:0,type:'start',custom:{width:60}},
@@ -936,7 +932,7 @@
             {x:10,y:5,z:0,type:'normal',reward:assignReward(),custom:{width:50,floatAmplitude:1.5,floatSpeed:2.5,opacity:0.88,color:0x00BCD4}},
             {x:12,y:4,z:0,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:1.8,floatSpeed:1.9,opacity:0.95,color:0xFF5722}},
             {x:12,y:3,z:2,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:2.2,floatSpeed:1.7,opacity:0.98,color:0x8BC34A}},
-            {x:14,y:2,z:2,type:'end',reward:assignReward(),custom:{width:54,floatAmplitude:1.9,floatSpeed:2.0,color:0xFF6B6B}}
+            {x:14,y:2,z:2,type:'end',custom:{width:54,floatAmplitude:1.9,floatSpeed:2.0,color:0xFF6B6B}}
           ]},
           { id: 18, name: "高低折线", blocks: [
             {x:0,y:0,z:0,type:'start',custom:{width:60}},
@@ -951,7 +947,7 @@
             {x:10,y:1,z:0,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:1.6,floatSpeed:2.0,opacity:0.94,color:0x8BC34A}},
             {x:12,y:2,z:0,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:1.4,floatSpeed:2.4,opacity:0.9,color:0xFF6B6B}},
             {x:12,y:3,z:2,type:'normal',reward:assignReward(),custom:{width:45,floatAmplitude:1.8,floatSpeed:1.7,opacity:0.95,color:0xFF69B4}},
-            {x:14,y:4,z:2,type:'end',reward:assignReward(),custom:{width:54,floatAmplitude:2.0,floatSpeed:1.5,opacity:0.92,color:0xFFD700}}
+            {x:14,y:4,z:2,type:'end',custom:{width:54,floatAmplitude:2.0,floatSpeed:1.5,opacity:0.92,color:0xFFD700}}
           ]},
           { id: 19, name: "环绕起伏", blocks: [
             {x:0,y:0,z:0,type:'start',custom:{width:60}},
@@ -967,7 +963,7 @@
             {x:12,y:4,z:0,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:1.7,floatSpeed:1.8,opacity:0.95,color:0xFF5722}},
             {x:12,y:3,z:2,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:2.0,floatSpeed:1.7,opacity:0.94,color:0x8BC34A}},
             {x:14,y:2,z:2,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:1.5,floatSpeed:2.1,opacity:0.9,color:0xFF6B6B}},
-            {x:14,y:1,z:0,type:'end',reward:assignReward(),custom:{width:50,floatAmplitude:2.0,floatSpeed:1.5,color:0xFF69B4}}
+            {x:14,y:1,z:0,type:'end',custom:{width:50,floatAmplitude:2.0,floatSpeed:1.5,color:0xFF69B4}}
           ]},
           { id: 20, name: "终极错落", blocks: [
             {x:0,y:0,z:0,type:'start',custom:{width:60}},
@@ -983,7 +979,7 @@
             {x:12,y:4,z:0,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:1.3,floatSpeed:2.4,opacity:0.86,color:0xFF5722}},
             {x:12,y:5,z:2,type:'normal',reward:assignReward(),custom:{width:48,floatAmplitude:2.0,floatSpeed:1.6,opacity:0.96,color:0x8BC34A}},
             {x:14,y:6,z:2,type:'normal',reward:assignReward(),custom:{width:54,floatAmplitude:1.4,floatSpeed:2.3,opacity:0.9,color:0xFF6B6B}},
-            {x:14,y:7,z:0,type:'end',reward:assignReward(),custom:{width:54,floatAmplitude:2.3,floatSpeed:1.4,color:0xFFD700}}
+            {x:14,y:7,z:0,type:'end',custom:{width:54,floatAmplitude:2.3,floatSpeed:1.4,color:0xFFD700}}
           ]},
           // 中级关卡（21-30）：更大高度差和更复杂错落
           { id: 21, name: "初见高度差", blocks: [
@@ -1287,6 +1283,8 @@
 
         this.currentLevel = levelId;
         this.player.position.set(0, this.baseY, 0);
+        this.player.scale.set(this.baseScale, this.baseScale, this.baseScale);
+        this.player.rotation.set(0, 0, 0);
         this.worldOffset = { x: 0, z: 0 };
         this.gameState = 'waiting';
         this.updateHUD();
@@ -1459,12 +1457,16 @@
 
         const animate = (now) => {
           const t = Math.min((now - startTime) / this.jumpDuration, 1);
+          
+          // Parabolic jump trajectory using quadratic easing
+          const parabola = 4 * t * (1 - t);
           const arc = Math.sin(t * Math.PI);
+          const jumpProgress = t < 0.5 ? parabola : arc;
 
-          // Keep player centered on screen, only animate Y (arc)
+          // Keep player centered on screen, animate Y with parabolic arc
           this.player.position.x = 0;
           this.player.position.z = 0;
-          this.player.position.y = startY + (jumpHeight - startY) * arc;
+          this.player.position.y = startY + (jumpHeight - startY) * jumpProgress;
 
           // Move world gradually during animation only if not in place
           const currentMoveX = worldMoveX * t;
@@ -1487,6 +1489,27 @@
             this.player.rotation.y = Math.atan2(dir.x, dir.z);
           }
 
+          // Body animation during jump: sway and squish/stretch
+          const bounce = Math.sin(t * Math.PI * 3) * 0.15;
+          const leanAngle = Math.sin(t * Math.PI) * 0.2;
+          
+          // Apply body sway (rotation)
+          this.player.rotation.x = leanAngle - 0.1; // slight forward lean
+          this.player.rotation.z = bounce * (dir.x !== 0 ? dir.x : 1);
+
+          // Apply squish/stretch effect - use baseScale (18) for proper size
+          const stretchFactor = 1 + Math.sin(t * Math.PI) * 0.1;
+          const squishFactor = 1 - Math.sin(t * Math.PI) * 0.08;
+          const baseScale = this.baseScale || 18;
+          
+          if (t < 0.5) {
+            // Going up: stretch body (taller Y, narrower X/Z)
+            this.player.scale.set(baseScale * squishFactor, baseScale * stretchFactor, baseScale * squishFactor);
+          } else {
+            // Coming down: squish body (shorter Y, wider X/Z)
+            this.player.scale.set(baseScale * stretchFactor, baseScale * squishFactor, baseScale * stretchFactor);
+          }
+
           if (t < 1) {
             requestAnimationFrame(animate);
           } else {
@@ -1500,8 +1523,10 @@
               b.userData.originalZ = b.position.z;
             });
 
-            // Reset player position to targetY (final height after jump)
+            // Reset player position and rotation to targetY, restore base scale
             this.player.position.set(0, targetY, 0);
+            this.player.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
+            this.player.scale.set(baseScale, baseScale, baseScale);
             this.onLand();
           }
         };
@@ -1534,8 +1559,14 @@
         }
 
         if (onBlock) {
-          // Update player height when landing
+          // Update player grid position based on actual landed block
+          this.playerPosition.x = onBlock.userData.x || 0;
+          this.playerPosition.z = onBlock.userData.z || 0;
           this.playerPosition.y = onBlock.userData.y || 0;
+
+          // Ensure visual position matches block height precisely to avoid sinking
+          const landedY = this.blockConfig.height * (onBlock.userData.y || 0) + (this.blockConfig.height - this.scaledBottom + 3.1);
+          this.player.position.y = landedY;
 
           if (onBlock.userData.reward) {
             this.collectReward(onBlock);
@@ -1816,6 +1847,8 @@
             // Reset state even on error to prevent freeze
             this.gameState = 'waiting';
             this.player.position.set(0, this.baseY, 0);
+            this.player.scale.set(this.baseScale, this.baseScale, this.baseScale);
+            this.player.rotation.set(0, 0, 0);
           }
           return;
         }
@@ -1854,6 +1887,13 @@
       animate() {
         requestAnimationFrame(() => this.animate());
 
+        // Camera follows rabbit's Y position to keep it centered on screen
+        // Only apply for levels 16-30 where height variation is significant
+        if (this.currentLevel > 15) {
+          const targetCameraY = 144 + (this.player.position.y - this.baseY) * 0.5;
+          this.camera.position.y = this.camera.position.y * 0.95 + targetCameraY * 0.05;
+        }
+
         // Animate clouds - each moves at its own speed and direction
         this.clouds.forEach(c => {
           c.position.x += c.userData.speed;
@@ -1869,12 +1909,16 @@
           const floatPhase = b.userData.floatPhase || 0;
           const floatOffset = b.userData.floatOffset || 0;
           
-          if (floatAmplitude > 0 && floatSpeed > 0) {
+          if (this.currentLevel <= 15 && floatAmplitude > 0 && floatSpeed > 0) {
+            // Floating animation only for levels 1-15
             const floatY = Math.sin(time * floatSpeed + floatOffset + floatPhase) * floatAmplitude * this.blockConfig.height;
             b.position.y = baseY + floatY;
-          } else {
+          } else if (this.currentLevel <= 15) {
             // Default floating for levels 1-15
             b.position.y = baseY + Math.sin(time * 4.5 + floatOffset) * 1.2;
+          } else {
+            // No floating for levels 16-30 - keep blocks stable
+            b.position.y = baseY;
           }
           
           b.children.forEach(c => {
