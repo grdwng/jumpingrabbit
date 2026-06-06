@@ -1445,8 +1445,9 @@
        * Does NOT change gameState (player input remains blocked by parent 'jumping' state).
        * @param {THREE.Object3D|null} targetBlock - landing block (null = skip emissive flash)
        * @param {number} targetY - baseline y to bounce around (not the current player y)
+       * @param {function} [onComplete] - called after the stomp animation finishes (after cleanup)
        */
-      playLandingStomp(targetBlock, targetY) {
+      playLandingStomp(targetBlock, targetY, onComplete) {
         const STOMP_DURATION = 80;
         const DIP = 2.5;
         const REBOUND = 0.9;
@@ -1483,6 +1484,8 @@
             if (origEmissive !== null && targetBlock.material.emissive) {
               targetBlock.material.emissive.setHex(origEmissive);
             }
+            // Notify caller that the stomp window is over (e.g. release gameState lock)
+            if (onComplete) onComplete();
           }
         };
         requestAnimationFrame(animate);
@@ -1599,11 +1602,15 @@
             this.player.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
             this.player.scale.set(baseScale, baseScale, baseScale);
 
-            // Trigger landing stomp for asymmetric upward jumps (excludes in-place jumps)
+            // Trigger landing stomp for asymmetric upward jumps (excludes in-place jumps).
+            // onLand is called inside the stomp's onComplete so that gameState stays 'jumping'
+            // for the full 80ms stomp window — prevents the player from triggering a second
+            // jump while the stomp is still animating.
             if (profile === 'asymmetric' && targetBlock && !isInPlace) {
-              this.playLandingStomp(targetBlock, targetY);
+              this.playLandingStomp(targetBlock, targetY, () => this.onLand());
+            } else {
+              this.onLand();
             }
-            this.onLand();
           }
         };
         requestAnimationFrame(animate);

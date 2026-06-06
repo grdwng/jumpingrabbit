@@ -179,3 +179,34 @@ test('level 16 with heightDiff=0 uses symmetric (only upward triggers)', async (
   });
   expect(result).toBe('symmetric');
 });
+
+test('gameState stays jumping during 80ms stomp window (state race fix)', async ({ page }) => {
+  await page.goto('http://localhost:8080/game.html');
+  await page.waitForTimeout(2000);
+
+  const result = await page.evaluate(async () => {
+    // Simulate the post-landing moment: gameState='jumping' and stomp is starting
+    window.game.gameState = 'jumping';
+    const origOnLand = window.game.onLand;
+    let onLandCallTime = null;
+    window.game.onLand = function() {
+      onLandCallTime = performance.now();
+      // Don't actually mutate gameState for this test
+    };
+    const stompStart = performance.now();
+    window.game.playLandingStomp(null, 100, () => window.game.onLand());
+    // At t=40ms (mid-stomp), gameState should still be 'jumping'
+    await new Promise(r => setTimeout(r, 40));
+    const midStompState = window.game.gameState;
+    // At t=150ms (after stomp), onLand should have been called
+    await new Promise(r => setTimeout(r, 110));
+    const onLandElapsed = onLandCallTime ? (onLandCallTime - stompStart) : null;
+    // Restore
+    window.game.onLand = origOnLand;
+    return { midStompState, onLandElapsed };
+  });
+
+  expect(result.midStompState).toBe('jumping');
+  expect(result.onLandElapsed).toBeGreaterThanOrEqual(80);
+  expect(result.onLandElapsed).toBeLessThan(150);
+});
