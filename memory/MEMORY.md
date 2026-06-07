@@ -181,3 +181,37 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - 3935d7e test(jump): visual verification spec for 30/70 trajectory + 80ms stomp
 
 **Feature 完成**: 非对称跳跃从 spec → plan → 实施 → 测试 → 视觉验证全链路闭环 ✅
+
+## 2026-06-07: Silent No-Op 按键 bug 修复 ✅
+
+**症状**（Dad 实测 Level 17 第 8/9 块）:
+- 第 9 块 `(10, 4, 2)` 按 ➡️ 和 ⬇️ **完全没 action**（无动画、无音效、状态不变），看起来 app 坏掉
+- ⬅️ 和 ⬆️ 正常有反应
+
+**根因**（headless 复现 + 代码追读）:
+- `executeJump` (game.html:1367-1404) 块搜索**只按 x+z 容差过滤（不查 y）**：
+  - ArrowRight from `(10,4,2)` → target `(8,4,2)` → 误匹配 block 6 `(8,5,2)`（同 xz、y=5）
+  - ArrowDown from `(10,4,2)` → target `(10,4,0)` → 误匹配 block 8 `(10,5,0)`（同 xz、y=5）
+- 误匹配后 heightDiff=+1 + !bigJump → 旧代码静默 `jumpAllowed = false` → `startJump` **完全没调用** → 无动画
+
+**修复**（最小改动）:
+- 旧: `jumpAllowed = false` → `if (jumpAllowed) startJump(...)`
+- 新: `targetBlock = null`（让 search 当作"无目标"处理）→ `startJump(dir, null, bigJump)` 总是调用
+- 对应路径：startJump → onLand → 找不到块 → onFall → 兔子跌落、生命-1、关卡重置
+- 移除 dead code `let jumpAllowed = true` 变量
+
+**设计原则**（Dad 拍板）:
+> "我们从来不限制移动，大不了跌落重新开始"
+- 按键**永远产生可见 action**（动画 OR 跌落）
+- silent no-op = bug，不允许存在
+
+**测试**:
+- `scripts/level17-block9-direction-keys.spec.js` (新增) ✅ 1 passed
+  - 4 个方向键都验证 `worldOffset` 变化 OR `lives` 减少
+  - ArrowDown/Right 现在产生跌落（lives--），不再 silent
+- 回归: `height-jump` + `asymmetric-jump` + `level19-path-reachability` + `height-block` ✅ 20 passed
+  - 关键: "向上跳需要Space键" 仍 pass — silent block 转为 fall 后该测试还是对的
+
+**未做**:
+- onLand 里 `blockWorldX = b.position.x + this.worldOffset.x` 是**双重计数**的预存 bug（独立 issue，不影响本次 fix），等 Dad 报告再说
+

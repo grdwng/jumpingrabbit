@@ -1378,8 +1378,6 @@
           }
         }
 
-        let jumpAllowed = true;
-        
         if (targetBlock) {
           const targetHeight = targetBlock.userData.y || 0;
           const currentHeight = this.playerPosition.y || 0;
@@ -1389,19 +1387,22 @@
 
           if (heightDiff > 3) {
             this.lastJumpResult = 'blocked';
-            jumpAllowed = false;
+            // Treat as unreachable target: let the player jump and fall instead
+            // of silently doing nothing. Per game principle, every keypress
+            // must produce visible action — at worst, the rabbit falls and
+            // the level restarts.
+            targetBlock = null;
           } else if (heightDiff > 0 && !bigJump) {
-            // Height diff > 0: need big jump (space) for upward jump
+            // Height diff > 0: need big jump (space) for upward jump.
+            // Without space, fall rather than silently no-op.
             this.lastJumpResult = 'blocked';
-            jumpAllowed = false;
+            targetBlock = null;
           } else {
             this.lastJumpResult = 'allowed';
           }
         }
 
-        if (jumpAllowed) {
-          this.startJump(dir, targetBlock, bigJump);
-        }
+        this.startJump(dir, targetBlock, bigJump);
       }
 
       onKeyUp(e) {
