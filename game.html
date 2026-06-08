@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Jumping Rabbit</title>
+  <link rel="preload" href="levels.json" as="fetch" crossorigin>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; font-family: 'Nunito', sans-serif; }
@@ -346,7 +347,8 @@
           'ArrowLeft': { x: -1, z: 0 }, 'ArrowRight': { x: 1, z: 0 }
         };
 
-        this.levels = this.createLevels();
+        this.levels = [];  // Will be loaded async from levels.json
+        this._levelsReady = this.createLevels().then(levels => { this.levels = levels; });
         this.currentLevel = 1;
 
         // Create procedural models - use procedural rabbit exclusively
@@ -802,10 +804,28 @@
         return models;
       }
 
-      createLevels() {
-        // Helper to assign rewards randomly (80% of normal blocks get rewards)
+      async createLevels() {
+        // Load from levels.json (2026-06-08: data externalized)
+        const res = await fetch('levels.json');
+        if (!res.ok) throw new Error(`Failed to load levels: HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.levels || data.levels.length !== 30) {
+          throw new Error(`Expected 30 levels, got ${data.levels?.length || 0}`);
+        }
         const assignReward = () => Math.random() < 0.8 ? ['crystal', 'heart', 'golden'][Math.floor(Math.random() * 3)] : null;
-
+        const CUSTOM_DEFAULT = { width: 54, height: 9, depth: 54, floatAmplitude: 1.5, floatSpeed: 2.0, opacity: 1.0 };
+        return data.levels.map(level => ({
+          id: level.id,
+          name: level.name,
+          targetCoins: level.targetCoins,
+          blocks: level.blocks.map(b => ({
+            x: b.x, y: b.y, z: b.z,
+            type: b.type,
+            reward: b.type === 'normal' ? assignReward() : null,
+            custom: b.custom ? { ...CUSTOM_DEFAULT, ...b.custom } : null
+          }))
+        }));
+        /* OLD HARDCODED ARRAY (now loaded from levels.json):
         return [
           { id: 1, name: "起步", blocks: [
             {x:0,y:0,z:0,type:'start'},{x:2,y:0,z:0,type:'normal',reward:assignReward()},{x:4,y:0,z:0,type:'normal',reward:assignReward()},
@@ -1131,15 +1151,18 @@
             {x:26,y:13,z:0,type:'end',custom:{width:48,height:7,depth:48,floatAmplitude:2.8,floatSpeed:1.3,color:0xE6B3FF,opacity:1}}
           ], targetCoins: 550}
         ];
+        */
       }
 
-      start() {
+      async start() {
         if (!this.modelsLoaded) {
           // If still loading, wait for it to complete then start
-          this.modelsLoadingPromise.then(() => {
-            this.start();
-          });
-          return;
+          await this.modelsLoadingPromise;
+          return this.start();
+        }
+        // Wait for async levels load (2026-06-08: data externalized)
+        if (this.levels.length === 0 && this._levelsReady) {
+          await this._levelsReady;
         }
         document.getElementById('message').style.display = 'none';
         document.getElementById('hud').classList.add('visible');
