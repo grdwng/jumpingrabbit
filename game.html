@@ -822,7 +822,7 @@
             x: b.x, y: b.y, z: b.z,
             type: b.type,
             reward: b.type === 'normal' ? assignReward() : null,
-            custom: b.custom ? { ...CUSTOM_DEFAULT, ...b.custom } : null
+            custom: b.custom ? { ...CUSTOM_DEFAULT, ...b.custom } : {}
           }))
         }));
         /* OLD HARDCODED ARRAY (now loaded from levels.json):
