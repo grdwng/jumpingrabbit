@@ -1162,7 +1162,13 @@
         }
         // Wait for async levels load (2026-06-08: data externalized)
         if (this.levels.length === 0 && this._levelsReady) {
-          await this._levelsReady;
+          try {
+            await this._levelsReady;
+          } catch (e) {
+            showError('关卡加载失败: ' + e.message);
+            showRetryButton();
+            return;
+          }
         }
         document.getElementById('message').style.display = 'none';
         document.getElementById('hud').classList.add('visible');
@@ -2038,7 +2044,30 @@
       }
     }
 
+    // UI helpers for levels.json load errors (2026-06-09)
+    function showError(msg) {
+      const el = document.getElementById('error-message');
+      if (el) { el.textContent = msg; el.style.color = 'red'; el.style.display = 'block'; }
+    }
+    function showRetryButton() {
+      const btn = document.getElementById('retry-button');
+      if (btn) {
+        btn.style.display = 'inline-block';
+        btn.onclick = () => {
+          const errEl = document.getElementById('error-message');
+          if (errEl) errEl.style.display = 'none';
+          btn.style.display = 'none';
+          // Recreate levels by re-invoking start() (which awaits _levelsReady)
+          if (window.game) window.game.start();
+        };
+      }
+    }
+
     window.game = new Game();
+    window.game.start();
   </script>
+
+  <div id="error-message" style="display:none; color:red; font-weight: bold; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; border:2px solid red; z-index:9999;"></div>
+  <button id="retry-button" style="display:none; position:fixed; top:60%; left:50%; transform:translateX(-50%); z-index:9999; padding:10px 20px;">重试</button>
 </body>
 </html>
