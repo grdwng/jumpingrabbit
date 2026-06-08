@@ -348,9 +348,11 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - Plan "5 个错误路径 schema 验证" → 实际只验证了 2 个(HTTP 状态 + 关卡数);其他 3 个(JSON parse 错 / missing type / invalid type)没在 createLevels 里写 schema check,errors spec 测的是浏览器原生 SyntaxError 消息匹配
 
 **未做**(上次遗留):
-- Electron 启动问题(`8888 port` 不 listen) → 当前走 8080 端口 `npm run dev` 测,Electron 启动问题下次排查
-- Level 21/22/30 单调(Dad 2026-06-07 反馈)— 仍挂起
-- onLand 里 `blockWorldX` 双重计数预存 bug — 仍挂起
+- ~~Electron 启动问题(`8888 port` 不 listen)~~ → **Dad 2026-06-09 报告已解决**(未提供 commit/细节)
+- ~~Level 21/22/30 单调(Dad 2026-06-07 反馈)~~ → **Dad 2026-06-09 报告已解决**(未提供 commit/细节)
+- ~~onLand 里 `blockWorldX` 双重计数预存 bug~~ → **Dad 2026-06-09 报告已解决**(未提供 commit/细节)
+
+**挂起清单 2026-06-09 清零**。但需注意:Dad 报告"已解决"但**没给 commit hash 或修复细节**,git log 也搜不到相关 commit(只搜到 1c6780e 之前的 docs 记录)。如未来发现 bug 实际未修,可能需要复盘。
 
 **本次 commit 链**:
 - `b4c266d` feat(levels): extract 30-level data to levels.json
