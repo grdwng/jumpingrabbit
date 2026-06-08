@@ -1176,6 +1176,14 @@
         this.loadLevel(1);
       }
 
+      // Re-fetch levels.json and start (2026-06-09: bug fix for retry button)
+      // start() awaits the same _levelsReady promise, so a rejected promise
+      // would re-throw on every retry. retryLoad() creates a new promise.
+      async retryLoad() {
+        this._levelsReady = this.createLevels().then(levels => { this.levels = levels; });
+        return this.start();
+      }
+
       createBlock(x, y, z, type = 'normal', reward = null, custom = {}) {
         const group = new THREE.Group();
         group.userData = { type, reward, x, y, z, originalX: x * this.blockConfig.width, originalY: y * this.blockConfig.height, originalZ: z * this.blockConfig.depth };
@@ -2057,8 +2065,8 @@
           const errEl = document.getElementById('error-message');
           if (errEl) errEl.style.display = 'none';
           btn.style.display = 'none';
-          // Recreate levels by re-invoking start() (which awaits _levelsReady)
-          if (window.game) window.game.start();
+          // Re-fetch levels and start (2026-06-09: bug fix - re-creates _levelsReady)
+          if (window.game) window.game.retryLoad();
         };
       }
     }
