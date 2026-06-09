@@ -361,3 +361,43 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - `d2755d1` fix(levels): default custom to {} not null to avoid createBlock crash
 - (pending) test(levels): add acceptance spec + record in memory
 
+## 2026-06-09: per-block validator 加固 ✅
+
+**触发**: Dad 问"可以直接 review/edit levels.json 不会造成问题吧?" — 担心改坏字段没人拦。
+**Spec**: `docs/superpowers/specs/2026-06-09-per-block-validation-design.md`
+**Plan**: `docs/superpowers/plans/2026-06-09-per-block-validation.md`
+
+**改动**(增量 +34 行 game.html + 95 行 spec):
+- `game.html`: 新增 `validateLevels(data)` IIFE 内函数(~32 行),`createLevels()` 在 `.length ===30` 之后、`.map()` 之前调用一次
+- `scripts/levels-validation.spec.js`: 新建,7 个测试(5 规则 + happy path + retry)
+
+**5 条规则**:
+- R1: x/y/z 必须是 finite number(防 `"abc"` 之类字符串)
+- R2: type ∈ {start, normal, end}(防 `"foo"` 之类非法值)
+- R3: 每关恰好 1 个 start + 1 个 end(防块缺失/重复)
+- R4: start 必须在 (0,0,0)(防兔子出场位置错位)
+- R5: 每关 ≥6 块(留余量,不卡现有 10+ 块数据)
+
+**错误流**(零新 UI):throw → 进 `start()` catch → 复用现有 `showError + showRetryButton`
+**错误格式**: `"关卡加载失败: Level N block i: field rule (got: actual)"` — 可定位到 JSON 行
+
+**测试**: 60 passed (53 existing + 7 new),0 回归
+
+**TDD 过程**:
+- RED 6 failed(预期 — feature 缺失)
+- GREEN 5/7 一次过(R1/R2/R4/R5/happy)
+- 修复:R3 模板字面量漏空格 `exactly1` → `exactly 1`
+- 修复:5 个测试 regex 跟实际消息格式对不上(我加空格,UI 前缀 `关卡加载失败: `)
+- 修复:retry 测试改用 unlink + restore 模式(已通过的 pattern),绕过 mutate 路径
+- REFACTOR:validator 函数缩进从 1 空格改 6 空格(跟项目其他 IIFE 函数一致)
+
+**YAGNI 拒绝**:
+- ajv/zod schema 库(项目历史决策)
+- 路径可达性校验(Δx=±2)— 留 v2,跟 2026-06-07 silent no-op bug 同类
+- `custom` 内层校验、`targetCoins` 范围、`name` 字符串内容
+- 拆独立 `.js` 文件
+
+**Dad 工作流改进**:
+- 改坏字段 → 游戏启动时红框立刻报"哪关哪块哪个字段" + retry 按钮,不用靠 console 调试
+- retry 按钮已修(`9776856`)+ 跟 validator 配合,改完数据点 retry 立即恢复
+
