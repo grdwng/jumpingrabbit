@@ -812,6 +812,7 @@
         if (!data.levels || data.levels.length !== 30) {
           throw new Error(`Expected 30 levels, got ${data.levels?.length || 0}`);
         }
+        validateLevels(data); // per-block schema check (2026-06-09)
         const assignReward = () => Math.random() < 0.8 ? ['crystal', 'heart', 'golden'][Math.floor(Math.random() * 3)] : null;
         const CUSTOM_DEFAULT = { width: 54, height: 9, depth: 54, floatAmplitude: 1.5, floatSpeed: 2.0, opacity: 1.0 };
         return data.levels.map(level => ({
@@ -2068,6 +2069,39 @@
           // Re-fetch levels and start (2026-06-09: bug fix - re-creates _levelsReady)
           if (window.game) window.game.retryLoad();
         };
+      }
+    }
+
+    // Validate levels.json per-block schema (2026-06-09)
+    function validateLevels(data) {
+      const TYPES = ['start', 'normal', 'end'];
+      const MIN_BLOCKS = 6;
+      for (const lvl of data.levels) {
+        if (!Array.isArray(lvl.blocks)) {
+          throw new Error(`Level ${lvl.id}: blocks must be an array`);
+        }
+        if (lvl.blocks.length < MIN_BLOCKS) {
+          throw new Error(`Level ${lvl.id}: needs at least ${MIN_BLOCKS} blocks (got ${lvl.blocks.length})`);
+        }
+        let startCount = 0, endCount = 0;
+        lvl.blocks.forEach((b, idx) => {
+          for (const k of ['x', 'y', 'z']) {
+            if (typeof b[k] !== 'number' || !Number.isFinite(b[k])) {
+              throw new Error(`Level ${lvl.id} block ${idx}: ${k} must be a finite number (got: ${JSON.stringify(b[k])})`);
+            }
+          }
+          if (!TYPES.includes(b.type)) {
+            throw new Error(`Level ${lvl.id} block ${idx}: type must be one of ${TYPES.join(', ')} (got: ${JSON.stringify(b.type)})`);
+          }
+          if (b.type === 'start') startCount++;
+          if (b.type === 'end') endCount++;
+        });
+        if (startCount !== 1) throw new Error(`Level ${lvl.id}: needs exactly 1 start block (got ${startCount})`);
+        if (endCount !== 1) throw new Error(`Level ${lvl.id}: needs exactly 1 end block (got ${endCount})`);
+        const start = lvl.blocks.find((b) => b.type === 'start');
+        if (start.x !== 0 || start.y !== 0 || start.z !== 0) {
+          throw new Error(`Level ${lvl.id}: start block must be at (0,0,0) (got: ${start.x},${start.y},${start.z})`);
+        }
       }
     }
 
