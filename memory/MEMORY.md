@@ -401,3 +401,46 @@ See `docs/superpowers/specs/2026-05-30-phase2-height-design.md` for design spec.
 - 改坏字段 → 游戏启动时红框立刻报"哪关哪块哪个字段" + retry 按钮,不用靠 console 调试
 - retry 按钮已修(`9776856`)+ 跟 validator 配合,改完数据点 retry 立即恢复
 
+## 2026-06-09: visual levels editor ✅
+
+**触发**: Dad 问"用可视化编辑工具打开30关，让我查看修改"
+**Spec**: `docs/superpowers/specs/2026-06-09-visual-levels-editor-design.md`
+**Plan**: `docs/superpowers/plans/2026-06-09-visual-levels-editor.md`
+
+**新文件**:
+- `editor.html` (~340 行) — 3D Three.js 场景 + 属性面板 + 30 关切换 + Save 按钮
+- `scripts/save-server.js` (~30 行) — Express PUT endpoint,听 8081 端口
+- `scripts/save-server.spec.js` (3 个 API 测试) + `scripts/visual-editor.spec.js` (7 个 E2E)
+
+**架构**: 浏览器 fetch PUT → save-server (8081) → fs.writeFileSync 写回 `levels.json`
+**Validator**: editor 内联复制 30 行(跟 game.html 同源, v2 抽公共模块)
+**依赖**: `express@^4` dev dep(已 npm i)
+
+**测试**: save-server 3/3 + visual-editor 7/7 = 10 passed, 0 回归
+
+**TDD 实战**:
+- 一次性 GREEN 5/7(R1-R4 + happy path)
+- AC5 修: `<select>` 没法 select 'foo'(不在 options),改用 evaluate 注入
+- AC6 修 1: 测试用 `/saved/i` 匹配 "unsaved" 子串,改 `/^saved$/`
+- AC6 修 2: 改非 start 块(改 start x 触发 R4 validator 拒绝)
+- AC6 修 3: visual-editor.spec.js 没 spawn save-server,测试运行时 `ERR_CONNECTION_REFUSED`,加 beforeAll spawn
+- AC6 修 4: 加 `waitForFunction(() => window.editor.state.levels.length === 30)`,防 loadLevels 还没完就 selectBlock
+
+**Dad 工作流改进**:
+- 浏览器 `http://localhost:8080/editor.html` 打开可视化 3D 场景
+- 左键拖旋转、滚轮缩放
+- 30 关下拉切换 / 点 3D 块选中 / 右侧改 x/y/z/type
+- 方向键移动 ±2 / Delete 删除 / Ctrl+S 保存
+- Save 按钮变橙色 = 有未保存改动
+- validator 内联拦截: 改非法 type → 弹错不写盘
+
+**YAGNI 拒绝**:
+- 添加新方块(只编辑现有)
+- 多选 / 框选 / 复制粘贴
+- 撤销 / 重做
+- 集成到 game.html 主菜单(独立 HTML 启动)
+
+**待办**:
+- ❗ Dad 需要并行跑 2 个 server: 8080 (`http-server`) + 8081 (`node scripts/save-server.js`)
+- 没加 npm script `dev:editor`(v2 加 concurrently)
+
