@@ -34,6 +34,7 @@ main { display: flex; height: calc(100vh - 50px); }
  <select id="level-select"></select>
  <button id="save-button">Save</button>
  <button id="reset-button">Reset</button>
+ <button id="frame-button" title="Frame all blocks (F)">Frame</button>
  <span id="save-status"></span>
 </header>
 <main>
@@ -101,9 +102,13 @@ function validateLevels(data) {
 
 const container = document.getElementById('three-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a0a);
-scene.add(new THREE.GridHelper(200, 20, 0x444444, 0x222222));
-const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+scene.background = new THREE.Color(0xe0e0e0);
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(50, 100, 50);
+scene.add(dir);
+scene.add(new THREE.GridHelper(200, 20, 0x666666, 0xbbbbbb));
+const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 5000);
 camera.position.set(0, 80, 120);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -126,7 +131,7 @@ const COLORS = { start: 0x4caf50, end: 0xf44336, normal: 0x2196f3, selected: 0xf
 
 function clearBlocks() { blockGroup.clear(); outlineGroup.clear(); }
 
-function renderLevel() {
+function renderLevel(frameIt = true) {
  clearBlocks();
  const lvl = state.levels.find((l) => l.id === state.currentLevelId);
  if (!lvl) return;
@@ -141,6 +146,7 @@ function renderLevel() {
  });
  updateStats();
  if (state.selectedBlockIdx !== null) highlightSelected();
+ if (frameIt) frameAll();
 }
 
 function highlightSelected() {
@@ -154,6 +160,45 @@ function highlightSelected() {
  const outline = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: COLORS.selected, linewidth: 2 }));
  outline.position.set(b.x * BLOCK_W, b.y * BLOCK_H, b.z * BLOCK_D);
  outlineGroup.add(outline);
+}
+
+function frameAll() {
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ if (!lvl || lvl.blocks.length === 0) return;
+ let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
+ lvl.blocks.forEach((b) => {
+ minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x);
+ minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y);
+ minZ = Math.min(minZ, b.z); maxZ = Math.max(maxZ, b.z);
+ });
+ // World-space bounding box (extent in world units, including block half-size margins)
+ const dimX = (maxX - minX + 1) * BLOCK_W;
+ const dimY = (maxY - minY + 1) * BLOCK_H;
+ const dimZ = (maxZ - minZ + 1) * BLOCK_D;
+ const cX = (minX + maxX) / 2 * BLOCK_W;
+ const cY = (minY + maxY) / 2 * BLOCK_H;
+ const cZ = (minZ + maxZ) / 2 * BLOCK_D;
+ // FOV-based distance: pick the smaller of vertical/horizontal FOV, fit maxDim in view
+ const maxDim = Math.max(dimX, dimY, dimZ);
+ const fovV = camera.fov * Math.PI / 180;
+ const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+ const minFov = Math.min(fovV, fovH);
+ const distance = (maxDim / 2) / Math.tan(minFov / 2) * 0.65; // 0.65x margin (2x apparent size vs 1.3x)
+ // 30° elevation, looking down at the level center
+ const elev = Math.PI / 6;
+ const horiz = distance * Math.cos(elev);
+ const vert = distance * Math.sin(elev);
+ camera.position.set(cX + horiz, cY + vert, cZ + horiz);
+ controls.target.set(cX, cY, cZ);
+ controls.update();
+}
+function frameSelected() {
+ if (state.selectedBlockIdx === null) return frameAll();
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ const b = lvl.blocks[state.selectedBlockIdx];
+ controls.target.set(b.x*BLOCK_W, b.y*BLOCK_H, b.z*BLOCK_D);
+ camera.position.set(b.x*BLOCK_W + 200, b.y*BLOCK_H + 200, b.z*BLOCK_D + 200);
+ controls.update();
 }
 
 function updateStats() {
@@ -197,7 +242,7 @@ function onPropChange() {
  b.z = parseFloat(document.getElementById('prop-z').value) || 0;
  b.type = document.getElementById('prop-type').value;
  markDirty();
- renderLevel();
+ renderLevel(false);
 }
 
 function showError(msg) {
@@ -283,6 +328,35 @@ document.getElementById('delete-button').addEventListener('click', () => {
  renderLevel();
 });
 document.getElementById('save-button').addEventListener('click', save);
+document.getElementById('frame-button').addEventListener('click', frameAll);
+
+// --- 3D click selection (Raycaster) ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('click', (event) => {
+ const rect = renderer.domElement.getBoundingClientRect();
+ mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+ mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+ raycaster.setFromCamera(mouse, camera);
+ const hits = raycaster.intersectObjects(blockGroup.children);
+ if (hits.length > 0) {
+ const idx = hits[0].object.userData.blockIdx;
+ state.currentLevelId = parseInt(document.getElementById('level-select').value);
+ selectBlock(idx);
+ }
+});
+window.editor.selectLevel = (id) => {
+ state.currentLevelId = id;
+ document.getElementById('level-select').value = id;
+ state.selectedBlockIdx = null;
+ renderLevel();
+};
+window.editor.frameAll = frameAll;
+window.editor.frameSelected = frameSelected;
+window.editor.getCameraState = () => ({
+ position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+ target: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+});
 document.getElementById('reset-button').addEventListener('click', reset);
 window.addEventListener('keydown', (e) => {
  if (state.selectedBlockIdx === null) return;
@@ -298,6 +372,7 @@ window.addEventListener('keydown', (e) => {
  renderLevel();
  }
  else if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); }
+ else if (e.key === 'f' || e.key === 'F' || e.key === 'Home') { frameAll(); }
 });
 function propDelta(axis, delta) {
  const inp = document.getElementById('prop-' + axis);

@@ -93,3 +93,23 @@ test('AC10: external bad levels.json shows validator error on load', async ({ pa
  await page.goto(EDITOR_URL);
  await expect(page.locator('#error-message')).toContainText(/x must be a finite number/);
 });
+
+test('AC11: editing a block does not reset camera position', async ({ page }) => {
+ await page.goto(EDITOR_URL);
+ await page.selectOption('#level-select', '1');
+ await page.waitForFunction(() => window.editor && window.editor.state.levels && window.editor.state.levels.length === 30);
+ await page.waitForTimeout(500); // settle initial frameAll
+ await page.evaluate(() => window.editor.selectBlock(1));
+ const before = await page.evaluate(() => window.editor.getCameraState());
+ // Edit y coordinate (a normal block, not the start block)
+ await page.locator('#prop-y').fill('5');
+ await page.waitForTimeout(300);
+ const after = await page.evaluate(() => window.editor.getCameraState());
+ // Camera should not have moved - this was the bug (frameAll called on every prop change)
+ expect(after.position.x).toBeCloseTo(before.position.x, 0);
+ expect(after.position.y).toBeCloseTo(before.position.y, 0);
+ expect(after.position.z).toBeCloseTo(before.position.z, 0);
+ expect(after.target.x).toBeCloseTo(before.target.x, 0);
+ expect(after.target.y).toBeCloseTo(before.target.y, 0);
+ expect(after.target.z).toBeCloseTo(before.target.z, 0);
+});
