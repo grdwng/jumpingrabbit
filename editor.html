@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Visual Levels Editor</title>
+<style>
+body { margin: 0; font-family: -apple-system, sans-serif; background: #1a1a1a; color: #eee; }
+header { background: #222; padding: 8px 16px; display: flex; gap: 12px; align-items: center; }
+header h1 { margin: 0; font-size: 16px; }
+header select, header button, header span { background: #333; color: #eee; border: 1px solid #555; padding: 4px 12px; border-radius: 4px; }
+header button { cursor: pointer; }
+header button:hover { background: #444; }
+#save-button.dirty { background: #ff9800; border-color: #ffb74d; }
+#save-status { font-size: 12px; padding: 4px 8px; }
+main { display: flex; height: calc(100vh - 50px); }
+#three-container { flex: 1; background: #0a0a0a; position: relative; }
+#three-container canvas { display: block; }
+#properties { width: 280px; background: #222; padding: 16px; overflow-y: auto; }
+#properties h3 { margin: 0 0 12px; font-size: 14px; color: #aaa; }
+#properties label { display: block; margin: 8px 0; font-size: 13px; }
+#properties label span { display: inline-block; width: 60px; }
+#properties input, #properties select { background: #333; color: #eee; border: 1px solid #555; padding: 4px 8px; border-radius: 3px; width: 160px; }
+#properties button { background: #d32f2f; color: white; border: none; padding: 6px 16px; border-radius: 3px; cursor: pointer; margin-top: 12px; }
+#properties button:hover { background: #f44336; }
+#stats { margin-top: 24px; font-size: 12px; color: #888; }
+#stats div { margin: 4px 0; }
+#error-message { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; color: red; padding: 20px; border: 2px solid red; font-weight: bold; z-index: 9999; max-width: 600px; }
+#no-selection { color: #888; font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+ <h1>Visual Levels Editor</h1>
+ <select id="level-select"></select>
+ <button id="save-button">Save</button>
+ <button id="reset-button">Reset</button>
+ <button id="frame-button" title="Frame all blocks (F)">Frame</button>
+ <span id="save-status"></span>
+</header>
+<main>
+ <div id="three-container"></div>
+ <aside id="properties">
+ <h3>Properties</h3>
+ <div id="no-selection">Click a block or use selectBlock(idx) in console</div>
+ <div id="selection-panel" style="display:none">
+ <label><span>Block</span> <span id="prop-block-info">#0 of 0</span></label>
+ <label><span>x</span> <input id="prop-x" type="number"></label>
+ <label><span>y</span> <input id="prop-y" type="number"></label>
+ <label><span>z</span> <input id="prop-z" type="number"></label>
+ <label><span>type</span>
+ <select id="prop-type">
+ <option value="start">start</option>
+ <option value="normal">normal</option>
+ <option value="end">end</option>
+ </select>
+ </label>
+ <button id="delete-button">Delete</button>
+ </div>
+ <div id="stats"></div>
+ </aside>
+</main>
+<div id="error-message" style="display:none"></div>
+
+<script type="importmap">{
+"imports": {
+ "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+ "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}
+}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const state = { levels: [], currentLevelId: 1, selectedBlockIdx: null, dirty: false };
+window.editor = { state, selectBlock };
+
+function validateLevels(data) {
+ const TYPES = ['start', 'normal', 'end'];
+ const MIN_BLOCKS = 6;
+ for (const lvl of data.levels) {
+ if (!Array.isArray(lvl.blocks)) throw new Error(`Level ${lvl.id}: blocks must be an array`);
+ if (lvl.blocks.length < MIN_BLOCKS) throw new Error(`Level ${lvl.id}: needs at least ${MIN_BLOCKS} blocks (got ${lvl.blocks.length})`);
+ let startCount = 0, endCount = 0;
+ lvl.blocks.forEach((b, idx) => {
+ for (const k of ['x', 'y', 'z']) {
+ if (typeof b[k] !== 'number' || !Number.isFinite(b[k])) {
+ throw new Error(`Level ${lvl.id} block ${idx}: ${k} must be a finite number (got: ${JSON.stringify(b[k])})`);
+ }
+ }
+ if (!TYPES.includes(b.type)) throw new Error(`Level ${lvl.id} block ${idx}: type must be one of ${TYPES.join(', ')} (got: ${JSON.stringify(b.type)})`);
+ if (b.type === 'start') startCount++;
+ if (b.type === 'end') endCount++;
+ });
+ if (startCount !== 1) throw new Error(`Level ${lvl.id}: needs exactly 1 start block (got ${startCount})`);
+ if (endCount !== 1) throw new Error(`Level ${lvl.id}: needs exactly 1 end block (got ${endCount})`);
+ const start = lvl.blocks.find((b) => b.type === 'start');
+ if (start.x !== 0 || start.y !== 0 || start.z !== 0) {
+ throw new Error(`Level ${lvl.id}: start block must be at (0,0,0) (got: ${start.x},${start.y},${start.z})`);
+ }
+ }
+}
+
+const container = document.getElementById('three-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe0e0e0);
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(50, 100, 50);
+scene.add(dir);
+scene.add(new THREE.GridHelper(200, 20, 0x666666, 0xbbbbbb));
+const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 5000);
+camera.position.set(0, 80, 120);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+window.addEventListener('resize', () => {
+ camera.aspect = container.clientWidth / container.clientHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+const blockGroup = new THREE.Group();
+scene.add(blockGroup);
+const outlineGroup = new THREE.Group();
+scene.add(outlineGroup);
+
+const BLOCK_W = 54, BLOCK_H = 9, BLOCK_D = 54;
+const COLORS = { start: 0x4caf50, end: 0xf44336, normal: 0x2196f3, selected: 0xffd700 };
+
+function clearBlocks() { blockGroup.clear(); outlineGroup.clear(); }
+
+function renderLevel(frameIt = true) {
+ clearBlocks();
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ if (!lvl) return;
+ lvl.blocks.forEach((b, idx) => {
+ const color = COLORS[b.type] || COLORS.normal;
+ const geom = new THREE.BoxGeometry(BLOCK_W, BLOCK_H, BLOCK_D);
+ const mat = new THREE.MeshLambertMaterial({ color });
+ const mesh = new THREE.Mesh(geom, mat);
+ mesh.position.set(b.x * BLOCK_W, b.y * BLOCK_H, b.z * BLOCK_D);
+ mesh.userData = { blockIdx: idx, type: b.type };
+ blockGroup.add(mesh);
+ });
+ updateStats();
+ if (state.selectedBlockIdx !== null) highlightSelected();
+ if (frameIt) frameAll();
+}
+
+function highlightSelected() {
+ outlineGroup.clear();
+ if (state.selectedBlockIdx === null) return;
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ const b = lvl.blocks[state.selectedBlockIdx];
+ if (!b) return;
+ const geom = new THREE.BoxGeometry(BLOCK_W * 1.05, BLOCK_H * 1.05, BLOCK_D * 1.05);
+ const edges = new THREE.EdgesGeometry(geom);
+ const outline = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: COLORS.selected, linewidth: 2 }));
+ outline.position.set(b.x * BLOCK_W, b.y * BLOCK_H, b.z * BLOCK_D);
+ outlineGroup.add(outline);
+}
+
+function frameAll() {
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ if (!lvl || lvl.blocks.length === 0) return;
+ let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
+ lvl.blocks.forEach((b) => {
+ minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x);
+ minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y);
+ minZ = Math.min(minZ, b.z); maxZ = Math.max(maxZ, b.z);
+ });
+ // World-space bounding box (extent in world units, including block half-size margins)
+ const dimX = (maxX - minX + 1) * BLOCK_W;
+ const dimY = (maxY - minY + 1) * BLOCK_H;
+ const dimZ = (maxZ - minZ + 1) * BLOCK_D;
+ const cX = (minX + maxX) / 2 * BLOCK_W;
+ const cY = (minY + maxY) / 2 * BLOCK_H;
+ const cZ = (minZ + maxZ) / 2 * BLOCK_D;
+ // FOV-based distance: pick the smaller of vertical/horizontal FOV, fit maxDim in view
+ const maxDim = Math.max(dimX, dimY, dimZ);
+ const fovV = camera.fov * Math.PI / 180;
+ const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+ const minFov = Math.min(fovV, fovH);
+ const distance = (maxDim / 2) / Math.tan(minFov / 2) * 0.65; // 0.65x margin (2x apparent size vs 1.3x)
+ // 30° elevation, looking down at the level center
+ const elev = Math.PI / 6;
+ const horiz = distance * Math.cos(elev);
+ const vert = distance * Math.sin(elev);
+ camera.position.set(cX + horiz, cY + vert, cZ + horiz);
+ controls.target.set(cX, cY, cZ);
+ controls.update();
+}
+function frameSelected() {
+ if (state.selectedBlockIdx === null) return frameAll();
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ const b = lvl.blocks[state.selectedBlockIdx];
+ controls.target.set(b.x*BLOCK_W, b.y*BLOCK_H, b.z*BLOCK_D);
+ camera.position.set(b.x*BLOCK_W + 200, b.y*BLOCK_H + 200, b.z*BLOCK_D + 200);
+ controls.update();
+}
+
+function updateStats() {
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ if (!lvl) return;
+ const start = lvl.blocks.find((b) => b.type === 'start');
+ const end = lvl.blocks.find((b) => b.type === 'end');
+ document.getElementById('stats').innerHTML =
+ `<div>Blocks: ${lvl.blocks.length} ${lvl.blocks.length >= 6 && lvl.blocks.length <= 17 ? '✓' : '⚠'}</div>` +
+ `<div>Start: ${start ? `(${start.x},${start.y},${start.z})` : 'MISSING ✗'}</div>` +
+ `<div>End: ${end ? `present ✓` : 'MISSING ✗'}</div>`;
+}
+
+function selectBlock(idx) {
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ if (!lvl || idx < 0 || idx >= lvl.blocks.length) return;
+ state.selectedBlockIdx = idx;
+ const b = lvl.blocks[idx];
+ document.getElementById('no-selection').style.display = 'none';
+ document.getElementById('selection-panel').style.display = 'block';
+ document.getElementById('prop-block-info').textContent = `#${idx} of ${lvl.blocks.length}`;
+ document.getElementById('prop-x').value = b.x;
+ document.getElementById('prop-y').value = b.y;
+ document.getElementById('prop-z').value = b.z;
+ document.getElementById('prop-type').value = b.type;
+ highlightSelected();
+}
+
+function markDirty() {
+ state.dirty = true;
+ document.getElementById('save-button').classList.add('dirty');
+ document.getElementById('save-status').textContent = 'unsaved';
+}
+
+function onPropChange() {
+ if (state.selectedBlockIdx === null) return;
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ const b = lvl.blocks[state.selectedBlockIdx];
+ b.x = parseFloat(document.getElementById('prop-x').value) || 0;
+ b.y = parseFloat(document.getElementById('prop-y').value) || 0;
+ b.z = parseFloat(document.getElementById('prop-z').value) || 0;
+ b.type = document.getElementById('prop-type').value;
+ markDirty();
+ renderLevel(false);
+}
+
+function showError(msg) {
+ const el = document.getElementById('error-message');
+ el.textContent = msg;
+ el.style.display = 'block';
+}
+function hideError() { document.getElementById('error-message').style.display = 'none'; }
+
+async function save() {
+ hideError();
+ try { validateLevels({ levels: state.levels }); }
+ catch (e) { showError('Validation failed: ' + e.message); return; }
+ try {
+ const res = await fetch('http://localhost:8081/levels.json', {
+ method: 'PUT',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ version: 1, levels: state.levels })
+ });
+ if (!res.ok) { showError('Save failed: HTTP ' + res.status); return; }
+ state.dirty = false;
+ document.getElementById('save-button').classList.remove('dirty');
+ document.getElementById('save-status').textContent = 'saved';
+ } catch (e) {
+ showError('Save error: ' + e.message);
+ }
+}
+
+async function reset() {
+ await loadLevels();
+ state.dirty = false;
+ document.getElementById('save-button').classList.remove('dirty');
+ document.getElementById('save-status').textContent = '';
+ hideError();
+}
+
+async function loadLevels() {
+ hideError();
+ try {
+ const res = await fetch('http://localhost:8080/levels.json');
+ if (!res.ok) throw new Error('HTTP ' + res.status);
+ const data = await res.json();
+ validateLevels(data);
+ state.levels = data.levels;
+ const sel = document.getElementById('level-select');
+ sel.innerHTML = '';
+ state.levels.forEach((l) => {
+ const opt = document.createElement('option');
+ opt.value = l.id;
+ opt.textContent = `Level ${l.id}: ${l.name}`;
+ sel.appendChild(opt);
+ });
+ sel.value = state.currentLevelId;
+ renderLevel();
+ } catch (e) {
+ showError('Load failed: ' + e.message);
+ }
+}
+
+document.getElementById('level-select').addEventListener('change', (e) => {
+ if (state.dirty && !confirm('Unsaved changes. Discard?')) {
+ e.target.value = state.currentLevelId;
+ return;
+ }
+ state.currentLevelId = parseInt(e.target.value);
+ state.selectedBlockIdx = null;
+ document.getElementById('no-selection').style.display = 'block';
+ document.getElementById('selection-panel').style.display = 'none';
+ renderLevel();
+});
+['prop-x', 'prop-y', 'prop-z', 'prop-type'].forEach((id) => {
+ document.getElementById(id).addEventListener('input', onPropChange);
+});
+document.getElementById('delete-button').addEventListener('click', () => {
+ if (state.selectedBlockIdx === null) return;
+ if (!confirm('Delete block ' + state.selectedBlockIdx + '?')) return;
+ const lvl = state.levels.find((l) => l.id === state.currentLevelId);
+ lvl.blocks.splice(state.selectedBlockIdx, 1);
+ state.selectedBlockIdx = null;
+ document.getElementById('no-selection').style.display = 'block';
+ document.getElementById('selection-panel').style.display = 'none';
+ markDirty();
+ renderLevel();
+});
+document.getElementById('save-button').addEventListener('click', save);
+document.getElementById('frame-button').addEventListener('click', frameAll);
+
+// --- 3D click selection (Raycaster) ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('click', (event) => {
+ const rect = renderer.domElement.getBoundingClientRect();
+ mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+ mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+ raycaster.setFromCamera(mouse, camera);
+ const hits = raycaster.intersectObjects(blockGroup.children);
+ if (hits.length > 0) {
+ const idx = hits[0].object.userData.blockIdx;
+ state.currentLevelId = parseInt(document.getElementById('level-select').value);
+ selectBlock(idx);
+ }
+});
+window.editor.selectLevel = (id) => {
+ state.currentLevelId = id;
+ document.getElementById('level-select').value = id;
+ state.selectedBlockIdx = null;
+ renderLevel();
+};
+window.editor.frameAll = frameAll;
+window.editor.frameSelected = frameSelected;
+window.editor.getCameraState = () => ({
+ position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+ target: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+});
+document.getElementById('reset-button').addEventListener('click', reset);
+window.addEventListener('keydown', (e) => {
+ if (state.selectedBlockIdx === null) return;
+ if (e.key === 'ArrowLeft') { propDelta('x', -2); e.preventDefault(); }
+ else if (e.key === 'ArrowRight') { propDelta('x', +2); e.preventDefault(); }
+ else if (e.key === 'ArrowUp') { propDelta('z', -2); e.preventDefault(); }
+ else if (e.key === 'ArrowDown') { propDelta('z', +2); e.preventDefault(); }
+ else if (e.key === 'Delete' || e.key === 'Backspace') { document.getElementById('delete-button').click(); }
+ else if (e.key === 'Escape') {
+ state.selectedBlockIdx = null;
+ document.getElementById('no-selection').style.display = 'block';
+ document.getElementById('selection-panel').style.display = 'none';
+ renderLevel();
+ }
+ else if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); }
+ else if (e.key === 'f' || e.key === 'F' || e.key === 'Home') { frameAll(); }
+});
+function propDelta(axis, delta) {
+ const inp = document.getElementById('prop-' + axis);
+ inp.value = parseFloat(inp.value) + delta;
+ onPropChange();
+}
+
+function animate() {
+ requestAnimationFrame(animate);
+ controls.update();
+ renderer.render(scene, camera);
+}
+
+loadLevels().then(() => animate());
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
   "main": "scripts/main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "npx http-server . -p 8080",
     "build": "electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -18,18 +19,40 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!dist/**/*",
+      "!test-results/**/*",
+      "!assets/**/*.glb",
+      "!assets/**/*.png",
+      "!assets/**/*.jpeg"
+    ],
     "mac": {
       "target": [
         "zip"
       ],
       "category": "public.app-category.games",
-      "icon": "icon.png"
-    }
+      "icon": "assets/icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": [
+          "**/*.glb",
+          "**/*.png",
+          "**/*.jpeg"
+        ]
+      }
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "asar": "^3.2.0",
     "electron": "^42.2.0",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.8.1",
+    "express": "^5.2.1"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
